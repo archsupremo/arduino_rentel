@@ -1,13 +1,32 @@
 
+
+#include <rtc_clock.h>
+
+RTC_clock rtc_clock(RC);
+
+
+#include <SD.h>
+//SdFat SD;
+
+#include <SPI.h>
+
+
+
+
+
+
 // Se importan las librerías
 #include <Time.h>
-#include <TFT_HX8357.h>
+//#include <TFT_HX8357.h> PARA MEGA
 #include <User_Setup.h>
 #include <Wire.h>
 #include <SFE_BMP180.h>
 
+#include <TFT_HX8357_Due.h> // PARA DUE
+
 //Se declara una instancia de la librería
-TFT_HX8357 tft = TFT_HX8357();
+TFT_HX8357_Due tft = TFT_HX8357_Due();
+//TFT_HX8357 tft = TFT_HX8357();
 SFE_BMP180 pressure;
 
 //declaramos el color cyan que no esta por defecto
@@ -31,27 +50,27 @@ double Temperatura = 0;
 char status;
 
 // Variables Globales
-float minVoltaje = 6;
-float maxVoltaje = 12;
+float minVoltaje = 0;
+float maxVoltaje = 100;
 float difVoltaje = (maxVoltaje - minVoltaje) / 5;
 float accionVoltaje = minVoltaje;
 int comprobarVoltaje = 0;
 
-float minAmperios = 10;
-float maxAmperios = 20;
+float minAmperios = 0;
+float maxAmperios = 100;
 float difAmperios = (maxAmperios - minAmperios) / 5;
 float accionAmperios = maxAmperios;
 int comprobarAmperios = 0;
 
 float tempMotorMin = 20;
-float tempMotorMax = 60;
+float tempMotorMax = 80;
 float difTempMotor = (tempMotorMax - tempMotorMin) / 5;
-
-float tempControlMin = 20;
-float tempControlMax = 80;
-float difTempControl = (tempControlMax - tempControlMin) / 5;
-float accionTempControl = tempControlMax;
+float accionTempControl = tempMotorMax;
 int comprobarTempControl = 0;
+//
+//float tempControlMin = 20;
+//float tempControlMax = 80;
+//float difTempControl = (tempControlMax - tempControlMin) / 5;
 
 float minRpm = 0;
 float maxRpm = 2500;
@@ -59,12 +78,12 @@ float difRpm = (maxRpm - minRpm) / 5;
 float accionRpm = maxRpm;
 int comprobarRpm = 0;
 
-float minTemp = 0;
+float minTemp = 0;//celsius en infocolores
 float maxTemp = 80;
 float difTemp = (maxTemp - minTemp) / 5;
 
-float minTrabajo = minAmperios * minVoltaje;
-float maxTrabajo = maxAmperios * maxVoltaje;
+float minTrabajo = 0;
+float maxTrabajo = 5000;
 float difTrabajo = (maxTrabajo - minTrabajo) / 5;
 float accionTrabajo = maxTrabajo;
 int comprobarTrabajo = 0;
@@ -80,14 +99,89 @@ float tamanoBateria = 0;
 int tiempoGrafica = 1000; //esta en milisegundos
 int sec = 0;
 int pulsosRpm = 10;
+int contador = 0 ;
+int campo= 0;
+String directorio="";
+String dir_actual = "";
+int num_actual= 0;
+float last_trabajo= 0;
+float last_rpm= 0;
+int refresco =0;
+  float voltaje=0;
+  float consumo=0;
+  float amperaje=0;
+  float tempMotor= 0;
+  float watios=0;
+String dir = "";
+File dataFile;
+
 
 void setup() {
 
   Serial.begin(9600);
-
   tft.begin();
-  // Se inicia el sensor y se hace una lectura inicial
+  tft.fillScreen(TFT_WHITE);
+  tft.setRotation(1);
+  tft.setTextSize(3);
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
   SensorStart();
+  
+  voltaje=0;
+  consumo=0;
+  amperaje=0;
+  tempMotor= 0;
+  watios=0;
+  tft.print("SD:  ");
+  if (SD.begin(10)) { 
+         
+    tft.println(" Leyendo archivos");
+    File dir_telemetria = SD.open("dir.txt");
+    String fraseCompleta = "";
+    while (dir_telemetria.available()) {
+      char letra = dir_telemetria.read();
+      fraseCompleta += letra;
+    } 
+    int inicio = fraseCompleta.lastIndexOf("=");
+    String valor =   fraseCompleta.substring(inicio+1);
+    dir_telemetria.close();
+
+    
+    tft.print("Sacando valor ... ");
+    int num = valor.toInt();
+    num++;
+    dir_telemetria = SD.open("dir.txt", FILE_WRITE);
+    dir_telemetria.print("=");
+    dir_telemetria.println(num);
+    dir_telemetria.close();
+    tft.println(num);
+    
+    tft.println("Creando directorio");
+    directorio = "dir";
+    directorio += num;
+    SD.mkdir(directorio);
+    directorio += "/";
+    tft.print(directorio);  
+    tft.println(" creado");
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+
+     
+    nuevoDir();
+  } else {
+    tft.setTextColor(TFT_RED,TFT_BLACK);
+    tft.println("Problema con sd ");
+    tft.println("Usando datos por defecto");
+    tft.setTextColor(TFT_WHITE,TFT_BLACK);
+    
+  }
+   
+delay(5000);
+  
+  
+  
+
+  
+  
+  // Se inicia el sensor y se hace una lectura inicial
   pinMode(A1, INPUT);
   pinMode(A0, INPUT);
   pinMode(18, INPUT);
@@ -100,22 +194,24 @@ void setup() {
   pinMode(A7, OUTPUT);
   
   // Botones
-  pinMode(A8, INPUT);
-  pinMode(A9, INPUT);
-  pinMode(A10, INPUT);
-  pinMode(A11, INPUT);
-  pinMode(A12, INPUT);
-  pinMode(A14, INPUT);
+  pinMode(2,INPUT);
+  pinMode(3,INPUT);
+  pinMode(4,INPUT);
+  pinMode(5,INPUT);
+  pinMode(6,INPUT);
+  pinMode(7,INPUT);
   
+  // pin de rpm
   attachInterrupt(digitalPinToInterrupt(18), rpm_fun, RISING);
+  
   half_revolutions = 0;
   rpm = 0;
   timeold = 0;
 //  Serial.println("Starting the I2C interface.");
   Wire.begin(); // Start the I2C interface.
 
-  setTime(00,00,00,1,1,1970);
-  tft.setRotation(1);
+  rtc_clock.init();
+  rtc_clock.set_time(0, 0, 0);
   tft.fillScreen(TFT_WHITE);
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
 }
@@ -124,61 +220,95 @@ void loop() {
 
   // Se hace lectura del sensor, altura y temperatura ambiente
   ReadSensor();
-  int bDerecha = analogRead(A8);  
-  int bIzquierda = analogRead(A9);
-  int bAceptar = analogRead(A10);  
-  int bCancelar = analogRead(A11);
-  int bMenu = analogRead(A13);
+  int bCampo =   digitalRead(6);//bcampo
+  int bMenos = digitalRead(5); //b-
+  int bMas = digitalRead(4);  //b+
+  int bVuelta = digitalRead(3); //bvuelta
+  int bMenu = digitalRead(2);//bmenu
+  int bConf = digitalRead(7); //lastb
   // Se imprimen las variables
-  float voltaje = analogRead(A1);
-  voltaje = voltaje / 10.2; 
-  
-  float consumo = analogRead(A2);
-
+   voltaje = analogRead(A0);
+  voltaje = voltaje / 9.3; 
+  /*
+  1023 -> 3.3
+  x -> 3
+  x =930
+  930/y=100*/
+   consumo = analogRead(A1);
+ 
   // Amperaje
-  float amp2 = consumo * 100;
-  float amperaje= map(amp2, 0, 103200, -20000, 20000);
+  float amp2 = consumo ;
+  float amperaje2= map(amp2, 388, 698 , 0, 2000);//697.5
+   amperaje=amperaje2 / 10;
+  /*
+  1023 -> 3.3
+  x -> 2.25
+  x=697.5
 
+  1023 3.3
+  x    1.25
+  387.5
+  */
+   watios = voltaje * amperaje;
   //Temp motor
-  float temp = analogRead(A0);
-  float volts = (temp / 1024.0) * 5.0;
-  float celsius = (volts - 0.5) * 100; 
-  
-  if (celsius < 0){
-    celsius = celsius * -1;
+  float temp = analogRead(A2);
+  float volts = (temp / 1024.0) * 3.3;
+   tempMotor = (volts) * 100; 
+  if (tempMotor < 0){
+    tempMotor = tempMotor * -1;
   }
-  if (bMenu == 1023 && menu == 0) {
+
+
+
+  
+  if (bMenu == HIGH && menu == 0) {
       difVoltaje = (maxVoltaje - minVoltaje) / 5;
       difAmperios = (maxAmperios - minAmperios) / 5;
       difTempMotor = (tempMotorMax - tempMotorMin) / 5;
-      difTempControl = (tempControlMax - tempControlMin) / 5;
+//      difTempControl = (tempControlMax - tempControlMin) / 5;
       difRpm = (maxRpm - minRpm) / 5;
       difTemp = (maxTemp - minTemp) / 5;
       difTrabajo = (maxTrabajo - minTrabajo) / 5;
       menu = 1;
       tft.fillScreen(TFT_WHITE);
-  } else if (bMenu == 1023) {
+  } else if (bMenu == HIGH) {
       menu = 1;
+      tft.fillScreen(TFT_WHITE);
+  }
+  if (bConf == HIGH && menu != 0 && menu != 3) {        
+      menu = 0;
+      tft.fillScreen(TFT_WHITE);
+  } else if (bConf == HIGH && menu != 3 && menu != 4) {      
+      menu = 3;
+      tft.fillScreen(TFT_WHITE);
+  } else if (bConf == HIGH) {
+      menu = 4;
       tft.fillScreen(TFT_WHITE);
   }
 
   //Calculamos las revs
-  if (half_revolutions >= 40) { 
-       //Al aumentar 40 aumenta la resolucion, al disminuir la velocidad de refresco
+  if (half_revolutions >= 150) { 
+       //Al aumentar 40 aumenta la resolucion, al disminuir aumenta la velocidad de refresco
        rpm = (30*1000/(millis() - timeold)*(half_revolutions/pulsosRpm))*2;
        timeold = millis();
        half_revolutions = 0;
+       contador = 0;
+     } else if(contador == 10) {
+       rpm=0;
+       contador = 0;
      }
+     contador++;
 
     //Calculamos donde estamos
-    if ((bDerecha == 1023 || bAceptar == 1023 || bIzquierda == 1023) && menu != 0 && menu != 3) {
+    if ((bCampo == HIGH || bMas == HIGH || bMenos == HIGH) && menu != 0 && menu != 3 && menu != 4) {
       if (menu == 2){
         menu = 1;
       } else {
         menu++;
       }
         tft.fillScreen(TFT_WHITE);
-    } //else if ((bAceptar == 1023 || bIzquierda == 1023) && menu != 0 && menu != 3) {
+    } 
+    //else if ((bMas == HIGH || bMenos == HIGH) && menu != 0 && menu != 3) {
 //      if (menu == 1){
 //        menu = 2;
 //      } else {
@@ -186,47 +316,460 @@ void loop() {
 //      }      
 //        tft.fillScreen(TFT_WHITE);
 //    }
-    if (bCancelar == 1023 && menu != 0 && menu != 3) {
-      tft.fillScreen(TFT_WHITE);
-      menu = 3;
-    }
     
      tft.setTextColor(TFT_BLACK,TFT_WHITE);
      
+     
+    if (rtc_clock.get_seconds() == sec) {
+      pintarTelemetria();
+    }
+  
+     
+     
      if (menu == 0) {
-        infoColores(voltaje, amperaje, celsius, rpm);
-        configuracion(bDerecha, bIzquierda, bAceptar, bCancelar);
+        infoColores();
+        configuracion(bCampo, bMenos, bMas, bVuelta);
      } else if (menu == 1) {
-        pantallaGeneral(voltaje, amperaje, Temperatura, Altura, celsius, rpm);      
+        pantallaGeneral();      
         hora();
      } else if (menu == 2) {
-        infoColores(voltaje, amperaje, celsius, rpm);
-        subMenu1(voltaje ,amperaje, rpm);
+        infoColores();
+        //subMenu1(voltaje, amperaje, rpm, watios);
+        subMenu2(rpm, watios);
      } else if (menu == 3) {
-        infoColores(voltaje, amperaje, celsius, rpm);
-        accion(bDerecha, bIzquierda, bAceptar, bCancelar);
-     }
+        infoColores();
+        accion(bCampo, bMenos, bMas, bVuelta);
+     } else if (menu == 4) {
+        getTelemetria(bCampo, bMas, bMenos, bVuelta);
+     } 
+     
 
-    comprobar(rpm, amperaje, voltaje, celsius);
+    comprobar();
+}
+
+void limpiar(){  
+  if (refresco >= 1000) {
+    tft.fillScreen(TFT_WHITE);
+    refresco = 0;
+  }
+  refresco++;
+}
+
+void subMenu2 (float rpm, float watios) {
+  limpiar();
+  
+  tft.setCursor(10,10);
+  tft.setTextSize(3);
+  tft.setTextColor(TFT_BLACK,TFT_WHITE);
+  tft.println("Trabajo :");
+  tft.setCursor(20,50);
+  /*
+  int lala = watios + 500;
+  tft.print(lala);*/
+  tft.print(watios);
+  tft.println(" ");
+  tft.setCursor(10,170);
+  tft.println("Revs/min:");
+  tft.setCursor(20,210);
+  tft.print(rpm);
+  tft.println("  ");
+  
     
-    time_t t = now();  
-    
-    if (second(t) == sec) {
-        sec++;
-        if (sec == 60) {
-          sec = 0;
-        }
-        Serial.print("E");
-        Serial.print(millis());
-        Serial.print(";");
-        Serial.print(voltaje);
-        Serial.println("F");
+  if (watios >= minTrabajo && watios <= maxTrabajo){
+    pintar(250,150,100,maxTrabajo - minTrabajo, watios, TFT_BLACK);
+    if (watios != last_trabajo){
+      pintar(250,150,100,maxTrabajo - minTrabajo, last_trabajo, TFT_WHITE);
     }
+    last_trabajo= watios;
+  } else {    
+    pintar(250,150,100,maxTrabajo - minTrabajo, 0, TFT_BLACK);
+    if (watios != last_trabajo){
+      pintar(250,150,100,maxTrabajo - minTrabajo, last_trabajo, TFT_WHITE);
+    }
+    last_trabajo= 0;
+  }
+  if (rpm >= minRpm && rpm <= maxRpm){
+    pintar(250,310,100,minRpm - maxRpm, rpm, TFT_BLACK);
+    if (rpm != last_rpm) {
+      pintar(250,310,100,minRpm - maxRpm, last_rpm, TFT_WHITE);
+    }
+    last_rpm= rpm;
+  }else {    
+    pintar(250,310,100,minRpm - maxRpm, 0, TFT_BLACK);
+    if (rpm != last_rpm) {
+      pintar(250,310,100,minRpm - maxRpm, last_rpm, TFT_WHITE);
+    }
+    last_rpm= rpm;
+  }
+
+    tft.setTextSize(1);
+    tft.setCursor(120,140);
+    tft.println(minTrabajo);
+    tft.setCursor(360,140);
+    tft.println(maxTrabajo);
+    tft.setCursor(240,20);
+    tft.println((maxTrabajo - minTrabajo)/2);
+
+    
+    pintarPunto(250,150,110,60,TFT_YELLOW);
+    
+    float trozo = (maxTrabajo - minTrabajo)/6;
+    tft.setCursor(110,90);
+    tft.println(((maxTrabajo - minTrabajo)/6)* 1);
+    tft.setCursor(150,40);
+    tft.println(((maxTrabajo - minTrabajo)/6)* 2);
+    tft.setCursor(310,40);
+    tft.println(((maxTrabajo - minTrabajo)/6)* 4);
+    tft.setCursor(350,90);
+    tft.println(((maxTrabajo - minTrabajo)/6)* 5);
+
+
+
+    //pintamos los bordes de referencia de los colores
+    pintarPunto(250,150,110,20,TFT_CYAN);
+    pintarPunto(250,150,110,40,TFT_GREEN);
+    pintarPunto(250,150,110,80,TFT_ORANGE);
+    pintarPunto(250,150,110,100,TFT_RED);
+
+
+    pintarWarning(250,310,110,TFT_RED);
+    //extra referencia
+    pintarPunto(250,150,110,10,TFT_BLACK);
+    pintarPunto(250,150,110,30,TFT_BLACK);
+    pintarPunto(250,150,110,50,TFT_BLACK);
+    pintarPunto(250,150,110,70,TFT_BLACK);
+    pintarPunto(250,150,110,90,TFT_BLACK);
+    pintarPunto(250,150,110,110,TFT_BLACK);
+
+    
+    
+    pintarPunto(250,310,110,60,TFT_YELLOW);
+    
+    tft.setCursor(120,300);
+    tft.println(minRpm);
+    tft.setCursor(360,300);
+    tft.println(maxRpm);
+    tft.setCursor(240,180);
+    tft.println((maxRpm - minRpm)/2);
+
+
+    
+
+
+    
+    pintarPunto(250,310,110,20,TFT_CYAN);
+    pintarPunto(250,310,110,40,TFT_GREEN);
+    pintarPunto(250,310,110,80,TFT_ORANGE);
+    pintarPunto(250,310,110,100,TFT_RED);
+    
+    pintarWarning(250,310,110,TFT_RED);
+    
+    pintarPunto(250,310,110,10,TFT_BLACK);
+    pintarPunto(250,310,110,30,TFT_BLACK);
+    pintarPunto(250,310,110,50,TFT_BLACK);
+    pintarPunto(250,310,110,70,TFT_BLACK);
+    pintarPunto(250,310,110,90,TFT_BLACK);
+    pintarPunto(250,310,110,110,TFT_BLACK);
+
+    
+    trozo = (maxRpm - minRpm)/6;
+    
+    tft.setCursor(110,250);
+    tft.println(trozo * 1);
+    tft.setCursor(150,200);
+    tft.println(trozo * 2);
+    tft.setCursor(310,200);
+    tft.println(trozo * 4);
+    tft.setCursor(350,250);
+    tft.println(trozo * 5);
+}
+
+void pintarPunto (int cx, int cy, int longitud, float campo, int color) {
+    float valor = 0;
+    float x =0;
+    float y =0;
+
+         
+     valor = map(campo,0,120,0,100);
+     x= cos(valor/100 * PI)*longitud;
+     y= sin(valor/100 * PI)*longitud;
+    tft.drawLine(cx - 0.85*x,cy - 0.85*y,cx -x,cy-y,color);  
+}
+void pintarWarning (int cx, int cy, int longitud,  int color) {
+    float valor = 0;
+    float x =0;
+    float y =0;
+
+         
+     valor = map(120,0,120,0,100);
+     x= cos(valor/100 * PI)*longitud;
+     y= sin(valor/100 * PI)*longitud;
+     tft.fillTriangle(cx - 0.85*x,cy - 0.85*y, cx,cy,cx+longitud, cy,color);
+    //tft.drawLine(cx - 0.85*x,cy - 0.85*y,cx -x,cy-y,color);  
 }
 
 
+
+
+
+  void pintar (int cx, int cy, int longitud,int res ,float campo, int color) {
+    float valor = 0;
+    float x =0;
+    float y =0;
+
+     valor = map(campo,0,res,0,100);
+     x= cos(valor/100 * PI)*longitud;
+     y= sin(valor/100 * PI)*longitud;
+    tft.println(x);
+    tft.println(y);
+    tft.drawLine(cx,cy,cx -x,cy-y,color);
+    tft.drawLine(cx+1,cy+3,cx -x,cy-y,color);
+    tft.drawLine(cx+2,cy+2,cx -x,cy-y,color);
+    tft.drawLine(cx+3,cy+1,cx -x,cy-y,color);
+    tft.drawLine(cx+4,cy,cx -x,cy-y,color);
+    tft.drawLine(cx-1,cy-3,cx -x,cy-y,color);
+    tft.drawLine(cx-2,cy-2,cx -x,cy-y,color);
+    tft.drawLine(cx-3,cy-1,cx -x,cy-y,color);
+    tft.drawLine(cx-4,cy,cx -x,cy-y,color);
+    tft.fillCircle(cx -x,cy-y, 3,color);
+    
+    tft.drawLine(cx - longitud,cy,cx + longitud,cy,TFT_RED);
+     tft.fillCircle(cx,cy, 10 , TFT_BLACK);
+     tft.drawCircle(cx,cy, 10 , TFT_MAGENTA);
+     tft.drawCircle(cx,cy, 11 , TFT_MAGENTA);
+     tft.drawCircle(cx,cy, 12 , TFT_MAGENTA);
+  }
+
+ void pintarTelemetria(){ 
+  
+        String telemetria = "";
+        sec++;
+        if (sec == 60) {
+          sec = 0;
+        //Evalor;valor2F
+        }
+        telemetria = telemetria +  millis();
+        telemetria = telemetria + "&voltaje;";
+        telemetria = telemetria + voltaje;
+        telemetria = telemetria + "&amperaje;";
+        telemetria = telemetria + amperaje;
+        telemetria = telemetria + "&watios;";
+        telemetria = telemetria +(voltaje * amperaje);
+        telemetria = telemetria + "&rpm;";
+        telemetria = telemetria + rpm;
+        telemetria = telemetria + "&temp;";
+        telemetria = telemetria + tempMotor;
+
+        File dataFileVoltaje = SD.open(directorio + "tel.txt" , FILE_WRITE);
+        dataFileVoltaje.println(telemetria);
+        dataFileVoltaje.close();
+
+}
+  
+void nuevoDir() {
+
+     tft.setTextColor(TFT_GREEN, TFT_BLACK);
+     tft.println("OK");
+    
+ minVoltaje = getValor("min_v");
+ maxVoltaje = getValor("max_v");
+
+ minAmperios = getValor("min_a");
+ maxAmperios = getValor("max_a");
+
+ tempMotorMin = getValor("min_t");
+ tempMotorMax = getValor("max_t");
+
+// tempControlMin = getValor("min_t");
+// tempControlMax = getValor("max_t");
+
+ minRpm = 0;//getValor("min_r");
+ maxRpm = 3000;//getValor("max_r");
+
+ minTemp = getValor("min_t");
+ maxTemp = getValor("max_t");
+
+ minTrabajo = getValor("min_w");
+ maxTrabajo = getValor("max_w");
+  
+ pulsosRpm = getValor("pulsos");
+    
+
+    tft.println(" datos cargados");
+    
+    
+  
+}
+
+void getTelemetria(int bCampo, int bMas, int bMenos, int bVuelta){
+  
+    limpiar();
+    tft.setTextSize(2);
+    tft.setCursor(10,10);
+    tft.setTextColor(TFT_BLACK, TFT_WHITE);
+    tft.println("   Abre linkduino");
+    tft.println("   Pulsa -/+ para cambiar dir");
+    tft.print("   ultimo dir....");
+    tft.println(directorio);
+    int num_final = directorio.substring(3).toInt();
+    if (dir_actual == "") {
+      dir_actual = directorio;
+      num_actual = num_final;
+    }
+    tft.print("   dir actual.....");
+    tft.println(dir_actual);
+    
+    if (bMenos == HIGH) {
+      if (num_actual > 1){
+        num_actual--;
+        dir_actual = "dir" + String(num_actual)+"/";
+      } else {
+        dir_actual = directorio;
+      }
+    }  
+    if (bMas == HIGH) {
+      if (num_actual < num_final){
+        num_actual++;
+        dir_actual = "dir" + String(num_actual)+"/";
+      } else {
+        dir_actual = "dir1/";
+      }
+    }  
+    
+    
+    tft.println("   Pulsa campo para ");
+    tft.println("   cambiar telemetria");  
+    tft.print("   campo....");
+
+  //cancelar vuelta, bCampo campo, bMas mas, bizq menos
+    if (bCampo == HIGH) {
+      if (campo == 4) {
+        campo = 0;
+      } else {
+        campo++;
+      }
+    } 
+    String dato ="";
+    switch (campo) {
+      case 0:
+      tft.println("Voltaje       ");
+      dato="voltaje";
+                      break;
+      case 1:
+      tft.println("Amperaje      ");
+      dato="amperaje";
+                      break;
+      case 2:
+      tft.println("Trabajo       ");
+      dato="watios";
+                      break;
+      case 3:
+      tft.println("Revoluciones");
+      dato="rpm";
+                      break;
+      case 4:
+      tft.println("Temperatura");
+      dato="temp";
+                      break;
+       default: break;
+    }
+    tft.println("   Pulsa conf para mostrar ");
+    ///////////////////////////////////
+    File dataFileCampo = SD.open(dir_actual + "tel.txt");
+      if (bVuelta == HIGH) {
+        tft.println("Pintando telemetria");    
+        String fraseCompleta = "";  
+        while (dataFileCampo.available()) {    //saco todo el texto
+          char letra =  dataFileCampo.read();
+          fraseCompleta += letra;
+        }
+      
+        int inicio = fraseCompleta.indexOf("\n");
+        int final = fraseCompleta.indexOf("\n",inicio+1);
+        String frase =   fraseCompleta.substring(inicio, final);
+      
+  
+        int info_inicio = 2;
+        int info_final = frase.indexOf("&");
+        String info = "";
+          //Evalor;valor2F
+  
+  
+          //pintamos el primer valor y declaramos las  variables
+        if (frase.length()>2) {
+          info = "E";
+          info += frase.substring(info_inicio, info_final);
+          info += ";";
+          info_inicio = frase.indexOf(dato+";");
+          info_final = frase.indexOf("&",info_inicio);
+          info+= frase.substring(info_inicio + dato.length()+1,info_final);
+          info += "F";
+          Serial.println(info);
+        }
+        
+        while (fraseCompleta.indexOf("\n", inicio+1) > 0) {//resto de lineas
+          inicio = fraseCompleta.indexOf("\n",inicio +1);
+          final = fraseCompleta.indexOf("\n",inicio+1);
+          frase =   fraseCompleta.substring(inicio, final);
+          if (frase.length()>2) {
+            info_final = frase.indexOf("&");
+            info = "E"; 
+            info += frase.substring(0, info_final);
+            info += ";";
+            info_inicio = frase.indexOf(dato+";");
+            info_final = frase.indexOf("&",info_inicio);
+            info+= frase.substring(info_inicio + dato.length()+1,info_final);
+            info += "F";
+             Serial.println(info);
+          }      
+        }   
+          
+          Serial.println("FIN DE LECTURA");
+        }
+  dataFileCampo.close();
+         
+      
+
+}
+
+int getValor(String campoEnviado){ 
+  File prueba = SD.open("max_min.txt");
+  String fraseCompleta = "";
+  while (prueba.available()) {
+    char letra = prueba.read();
+    fraseCompleta += letra;
+  } 
+  String busqueda = campoEnviado + ":";
+  int inicio = fraseCompleta.indexOf(busqueda);
+  int final = fraseCompleta.indexOf("&",inicio);
+  String valor =   fraseCompleta.substring(inicio + busqueda.length(), final);
+  prueba.close();
+  return valor.toInt();  
+}
+
+void setValor(String campoEnviado, int valor){ 
+  File prueba = SD.open("max_min.txt");
+  String fraseCompleta = "";
+  while (prueba.available()) {
+    char letra = prueba.read();
+    fraseCompleta += letra;
+  } 
+  String busqueda = campoEnviado + ":";
+  int inicio = fraseCompleta.indexOf(busqueda);
+  int final = fraseCompleta.indexOf("&",inicio);
+  String parte_inicial =   fraseCompleta.substring(0, inicio + busqueda.length());
+  String parte_final =   fraseCompleta.substring(final, fraseCompleta.length());
+  parte_inicial += valor;
+  parte_inicial += parte_final;
+  prueba.close();
+  SD.remove("max_min.txt");
+  prueba = SD.open("max_min.txt", FILE_WRITE);
+  prueba.println(parte_inicial);  
+  prueba.close();
+}
+
 // COMPROBACIONES
-void comprobar (float rpm, float amperaje, float voltaje, float celsius){
+void comprobar (){
      if (voltaje < accionVoltaje && comprobarVoltaje != 0) {
         analogWrite(A3, 1023);
      } else {        
@@ -242,14 +785,15 @@ void comprobar (float rpm, float amperaje, float voltaje, float celsius){
      } else {        
         analogWrite(A5, 0);
      }
-     if (celsius < accionTempControl && comprobarTempControl != 0) {
+     if (tempMotor < accionTempControl && comprobarTempControl != 0) {
         analogWrite(A6, 1023);
      } else {        
         analogWrite(A6, 0);
      }
 }
 
-void accion(int bDerecha, int bIzquierda, int bAceptar, int bCancelar) {
+void accion(int bCampo, int bMenos, int bMas, int bVuelta) {
+  limpiar();
   
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
   
@@ -323,7 +867,7 @@ void accion(int bDerecha, int bIzquierda, int bAceptar, int bCancelar) {
   tft.print(tamanoBateria);
   tft.print("   kw");
 
-  if (bCancelar == 1023) {
+  if (bVuelta == HIGH) {
       if (multiplicador >= 1000){
         multiplicador = 1;
       }else {
@@ -331,7 +875,7 @@ void accion(int bDerecha, int bIzquierda, int bAceptar, int bCancelar) {
       }      
    }
 
-   if (bDerecha == 1023) {
+   if (bCampo == HIGH) {
       if (cursorAccion == 11){
         cursorAccion = 0;
       } else {
@@ -380,11 +924,11 @@ void accion(int bDerecha, int bIzquierda, int bAceptar, int bCancelar) {
         default: break;
       }
 
-    if (bIzquierda == 1023 || bAceptar == 1023) {
+    if (bMenos == HIGH || bMas == HIGH) {
       switch(cursorAccion) {
         case 0: 
-          accionRpm = compBotonPulsado(bIzquierda, accionRpm, multiplicador); 
-//          // (bIzquierda == 1023) ? (accionRpm -= multiplicador) : (accionRpm += multiplicador);
+          accionRpm = compBotonPulsado(bMenos, accionRpm, multiplicador); 
+//          // (bMenos == HIGH) ? (accionRpm -= multiplicador) : (accionRpm += multiplicador);
 //          tft.fillCircle(140, 25, 5 ,TFT_GREEN);
           break;
         case 1: 
@@ -395,7 +939,7 @@ void accion(int bDerecha, int bIzquierda, int bAceptar, int bCancelar) {
           }
           break;
         case 2:
-          accionTrabajo = compBotonPulsado(bIzquierda, accionTrabajo, multiplicador); 
+          accionTrabajo = compBotonPulsado(bMenos, accionTrabajo, multiplicador); 
           break;
         case 3: 
           if(comprobarTrabajo == 1)  {
@@ -405,7 +949,7 @@ void accion(int bDerecha, int bIzquierda, int bAceptar, int bCancelar) {
           }
           break;
         case 4: 
-          accionAmperios = compBotonPulsado(bIzquierda, accionAmperios, multiplicador); 
+          accionAmperios = compBotonPulsado(bMenos, accionAmperios, multiplicador); 
           break;
         case 5:
           if(comprobarAmperios == 1)  {
@@ -415,7 +959,7 @@ void accion(int bDerecha, int bIzquierda, int bAceptar, int bCancelar) {
           }
           break;
         case 6: 
-          accionVoltaje = compBotonPulsado(bIzquierda, accionVoltaje, multiplicador); 
+          accionVoltaje = compBotonPulsado(bMenos, accionVoltaje, multiplicador); 
           break;
         case 7: 
           if(comprobarVoltaje == 1)  {
@@ -425,7 +969,7 @@ void accion(int bDerecha, int bIzquierda, int bAceptar, int bCancelar) {
           }
           break;
         case 8: 
-          accionTempControl = compBotonPulsado(bIzquierda, accionTempControl, multiplicador); 
+          accionTempControl = compBotonPulsado(bMenos, accionTempControl, multiplicador); 
           break;
         case 9: 
           if(comprobarTempControl == 1)  {
@@ -435,17 +979,17 @@ void accion(int bDerecha, int bIzquierda, int bAceptar, int bCancelar) {
           }
           break;
         case 10: 
-          tiempoGrafica = compBotonPulsado(bIzquierda, tiempoGrafica, multiplicador);
+          tiempoGrafica = compBotonPulsado(bMenos, tiempoGrafica, multiplicador);
           break;
         case 11: 
-          tamanoBateria = compBotonPulsado(bIzquierda, tamanoBateria, multiplicador);
+          tamanoBateria = compBotonPulsado(bMenos, tamanoBateria, multiplicador);
           break;
         default: break;
       }
     }
 }
 
-void infoColores(float voltaje, float amperaje, float celsius, float rpm) {
+void infoColores() {
   
   
   //VOLTAJE
@@ -466,24 +1010,25 @@ void infoColores(float voltaje, float amperaje, float celsius, float rpm) {
   
   //REVS
   tft.drawRect(410,160,69,80, TFT_BLACK);
-  tft.fillRect(411,161,67,78,getColor(rpm, difRpm, minRpm, maxRpm));
-  tft.setTextColor(TFT_BLACK, getColor(rpm, difRpm, minRpm, maxRpm));
+  tft.fillRect(411,161,67,78,getColorInvertido(rpm, difRpm, minRpm, maxRpm));
+  tft.setTextColor(TFT_BLACK, getColorInvertido(rpm, difRpm, minRpm, maxRpm));
   tft.setCursor(425, 190);
   tft.setTextSize(2);
   tft.print("RPM");
   
   //TEMPERATURA MOTOR
   tft.drawRect(410,240,69,80, TFT_BLACK);
-  tft.fillRect(411,241,67,78,getColorInvertido(celsius, difTemp, minTemp, maxTemp));
-  tft.setTextColor(TFT_BLACK, getColorInvertido(celsius, difTemp, minTemp, maxTemp));
+  tft.fillRect(411,241,67,78,getColorInvertido(tempMotor, difTemp, minTemp, maxTemp));
+  tft.setTextColor(TFT_BLACK, getColorInvertido(tempMotor, difTemp, minTemp, maxTemp));
   tft.setCursor(430, 270);
   tft.setTextSize(2);
   tft.print("C");
 }
 
 
-void pantallaGeneral(float voltaje, float amperaje, float Temperatura, float Altura, float celsius, int rpm) {
+void pantallaGeneral() {
   
+  limpiar();
   // Rectangulos
   tft.drawRect(0,15,220,50,TFT_RED);
   
@@ -507,10 +1052,10 @@ void pantallaGeneral(float voltaje, float amperaje, float Temperatura, float Alt
   tft.fillRect(170,76,49,48, getColorInvertido(amperaje, difAmperios, minAmperios, maxAmperios));
     
   //REVS
-  tft.fillRect(405,16,49,48,getColor(rpm, difRpm, minRpm, maxRpm));
+  tft.fillRect(405,16,49,48,getColorInvertido(rpm, difRpm, minRpm, maxRpm));
   
   //TEMPERATURA MOTOR
-  tft.fillRect(405,76,49,48,getColorInvertido(celsius, difTemp, minTemp, maxTemp));
+  tft.fillRect(405,76,49,48,getColorInvertido(tempMotor, difTemp, minTemp, maxTemp));
 
 
   tft.setCursor(240, 20);
@@ -520,7 +1065,7 @@ void pantallaGeneral(float voltaje, float amperaje, float Temperatura, float Alt
   tft.setCursor(240, 40);
   tft.setTextSize(3);
   
-  if (rpm  == NULL) {    
+  if (rpm  == NULL || rpm  == 0) {    
     tft.print("0");          
   } else {    
     tft.print(rpm, DEC);      
@@ -544,7 +1089,7 @@ void pantallaGeneral(float voltaje, float amperaje, float Temperatura, float Alt
   tft.println("Amperaje: ");
   tft.setCursor(10, 100);
   tft.setTextSize(3);
-  tft.print(amperaje/100,1);
+  tft.print(amperaje, 1);
   tft.println(" A ");
 
   
@@ -553,7 +1098,7 @@ void pantallaGeneral(float voltaje, float amperaje, float Temperatura, float Alt
   tft.println("Trabajo: ");
   tft.setCursor(10, 160);
   tft.setTextSize(3);
-  tft.print((amperaje/100)*voltaje, 1);
+  tft.print((amperaje)*voltaje, 1);
   tft.println(" W ");
 
   
@@ -562,7 +1107,7 @@ void pantallaGeneral(float voltaje, float amperaje, float Temperatura, float Alt
   tft.println("Temperatura: ");
   tft.setCursor(240, 160);
   tft.setTextSize(3);
-  tft.print(Temperatura, 1);
+  tft.print(Temperatura, 1);//quito 5 para ajustarlo 
   tft.println(" C\t  ");
   
   tft.setTextSize(2);
@@ -580,14 +1125,15 @@ void pantallaGeneral(float voltaje, float amperaje, float Temperatura, float Alt
   tft.println("T. Motor: ");
   tft.setCursor(240, 100);
   tft.setTextSize(3);
-  tft.print(celsius, 1);
+  tft.print(tempMotor, 1);
   tft.println(" C\t  ");
 
 }
 
 
-void configuracion(int bDerecha, int bIzquierda, int bAceptar, int bCancelar) {
+void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
 /////
+  limpiar();
       switch(cursorConfig) {
         case 0:
           tft.fillCircle(50, 35, 5,TFT_GREEN);
@@ -617,91 +1163,101 @@ void configuracion(int bDerecha, int bIzquierda, int bAceptar, int bCancelar) {
           tft.fillCircle(243, 185, 5,TFT_GREEN);
           break;
         case 9: 
-          tft.fillCircle(50, 235, 5,TFT_GREEN);
-          break;
-        case 10: 
-          tft.fillCircle(240, 235, 5,TFT_GREEN);
-          break;
-        case 11: 
           tft.fillCircle(50, 285, 5,TFT_GREEN);
           break;
-        case 12: 
+        case 10: 
           tft.fillCircle(240, 285, 5,TFT_GREEN);
-          break;     
+          break;/*
+        case 11: 
+          tft.fillCircle(50, 235, 5,TFT_GREEN);
+          break;
+        case 12: 
+          tft.fillCircle(240, 235, 5,TFT_GREEN);
+          break;     */
         default: break;
       }
 
   
-    if (bCancelar == 1023) {
+    if (bVuelta == HIGH) {
       if (multiplicador >= 1000){
         multiplicador = 1;
       }else {
         multiplicador *= 10; 
       }      
     }
-  
-    if (bDerecha == 1023) {
-      if (cursorConfig == 12){
+    if (bCampo == HIGH) {
+      if (cursorConfig == 10){
         cursorConfig = 0;
       } else {
         cursorConfig++;
       }
       tft.fillScreen(TFT_WHITE);
     }
-    if (bAceptar == 1023 || bIzquierda == 1023) {
+    if (bMas == HIGH || bMenos == HIGH) {
       switch(cursorConfig) {
         case 0: 
-          minVoltaje = compBotonPulsado(bIzquierda, minVoltaje, multiplicador); 
+          minVoltaje = compBotonPulsado(bMenos, minVoltaje, multiplicador); 
+          setValor("min_v", minVoltaje);
           tft.fillCircle(50, 35, 5,TFT_GREEN);
           break;
         case 1: 
-          maxVoltaje = compBotonPulsado(bIzquierda, maxVoltaje, multiplicador); 
+          maxVoltaje = compBotonPulsado(bMenos, maxVoltaje, multiplicador); 
+          setValor("max_v", maxVoltaje);
           tft.fillCircle(240, 35, 5,TFT_GREEN);
           break;
         case 2: 
-          minAmperios = compBotonPulsado(bIzquierda, minAmperios, multiplicador); 
+          minAmperios = compBotonPulsado(bMenos, minAmperios, multiplicador); 
+          setValor("min_a", minAmperios);
           tft.fillCircle(50, 85, 5,TFT_GREEN);
           break;
         case 3: 
-          maxAmperios = compBotonPulsado(bIzquierda, maxAmperios, multiplicador); 
+          maxAmperios = compBotonPulsado(bMenos, maxAmperios, multiplicador); 
+          setValor("max_a", maxAmperios);
           tft.fillCircle(240, 85, 5,TFT_GREEN);
           break;
         case 4: 
-          minTemp = compBotonPulsado(bIzquierda, minTemp, multiplicador); 
+          minTemp = compBotonPulsado(bMenos, minTemp, multiplicador); 
+          setValor("min_t", minTemp);
           tft.fillCircle(50, 135, 5,TFT_GREEN);
           break;
         case 5:
-          maxTemp = compBotonPulsado(bIzquierda, maxTemp, multiplicador); 
+          maxTemp = compBotonPulsado(bMenos, maxTemp, multiplicador); 
+          setValor("max_t", maxTemp);
           tft.fillCircle(240, 135, 5,TFT_GREEN);
           break;
         case 6: 
-          pulsosRpm = compBotonPulsado(bIzquierda, pulsosRpm, multiplicador); 
+          pulsosRpm = compBotonPulsado(bMenos, pulsosRpm, multiplicador); 
+          setValor("pulsos", pulsosRpm);
           tft.fillCircle(13, 185, 5,TFT_GREEN);
           break;
         case 7: 
-          minRpm = compBotonPulsado(bIzquierda, minRpm, multiplicador); 
+          minRpm = compBotonPulsado(bMenos, minRpm, multiplicador); 
+          setValor("max_r", minRpm);
           tft.fillCircle(113, 185, 5,TFT_GREEN);
           break;
         case 8: 
-          maxRpm = compBotonPulsado(bIzquierda, maxRpm, multiplicador); 
+          maxRpm = compBotonPulsado(bMenos, maxRpm, multiplicador); 
+          setValor("min_r", maxRpm);
           tft.fillCircle(243, 185, 5,TFT_GREEN);
           break;
         case 9: 
-          tempControlMin = compBotonPulsado(bIzquierda, tempControlMin, multiplicador); 
-          tft.fillCircle(50, 235, 5,TFT_GREEN);
-          break;
-        case 10: 
-          tempControlMax = compBotonPulsado(bIzquierda, tempControlMax, multiplicador); 
-          tft.fillCircle(240, 235, 5,TFT_GREEN);
-          break;
-        case 11: 
-          minTrabajo = compBotonPulsado(bIzquierda, minTrabajo, multiplicador); 
+          minTrabajo = compBotonPulsado(bMenos, minTrabajo, multiplicador); 
+          setValor("max_w", minTrabajo);
           tft.fillCircle(50, 285, 5,TFT_GREEN);
           break;
-        case 12: 
-          maxTrabajo = compBotonPulsado(bIzquierda, maxTrabajo, multiplicador); 
+        case 10: 
+          maxTrabajo = compBotonPulsado(bMenos, maxTrabajo, multiplicador); 
+          setValor("min_w", maxTrabajo);
           tft.fillCircle(240, 285, 5,TFT_GREEN);
           break;
+        /*case 11: 
+//          tempControlMin = compBotonPulsado(bMenos, tempControlMin, multiplicador); 
+          tft.fillCircle(50, 235, 5,TFT_GREEN);
+          break;
+        case 12: 
+ //         tempControlMax = compBotonPulsado(bMenos, tempControlMax, multiplicador); 
+          tft.fillCircle(240, 235, 5,TFT_GREEN);
+          break;*/
         default: break;
       }
     }
@@ -768,7 +1324,7 @@ void configuracion(int bDerecha, int bIzquierda, int bAceptar, int bCancelar) {
   tft.print("Max: ");
   tft.println(maxRpm);
 
-
+/*
   tft.setCursor(40, 210);
   tft.println("Temp. Control: Celsius");
 
@@ -779,7 +1335,7 @@ void configuracion(int bDerecha, int bIzquierda, int bAceptar, int bCancelar) {
   tft.setCursor(250, 230);
   tft.print("Max: ");
   tft.println(tempControlMax);
-
+*/
 
   tft.setCursor(40, 260);
   tft.println("Trabajo: W");
@@ -797,7 +1353,7 @@ void hora(){
   
   tft.drawRect(0,195,220,50,TFT_RED);
   
-  time_t t = now();  
+  //time_t t = now();  
   tft.setTextSize(2);
   
   tft.setCursor(10, 200);
@@ -809,92 +1365,45 @@ void hora(){
   
   tft.setTextSize(3);
 
-  if (hour(t) < 10) {
+  if (rtc_clock.get_hours() < 10) {
     tft.print("0");
   }
-  tft.print(hour(t));
+  tft.print(rtc_clock.get_minutes());
   
   tft.print(":");
   
-  if (minute(t) < 10) {
+  if (rtc_clock.get_minutes() < 10) {
     tft.print("0");
   }
-  tft.print(minute(t));
+  tft.print(rtc_clock.get_hours());
   
   tft.print(":");
   
-  if (second(t) < 10) {
+  if (rtc_clock.get_seconds() < 10) {
     tft.print("0");
   }
-  tft.print(second(t));
+  tft.print(rtc_clock.get_seconds());
   
   tft.setCursor(0, 0);
-  if(second(t) == 50) {
-     tft.fillScreen(TFT_WHITE);
-  }
 }
 
 
 // Submenu de Voltaje y RPM
-void subMenu1(float voltaje,float amperaje, float rpm) {
-  tft.setTextSize(3);
-//  tft.drawRect(0, 0, 410, 235, TFT_RED);
-  
-  float trabajo = voltaje * (amperaje / 100);
-  int valorRpm = map(rpm * 1000, minRpm * 1000, maxRpm * 1000, 0, 410);
-  float valorTrabajo = map(trabajo * 1000, minTrabajo * 1000, maxTrabajo * 1000, 1, 409);
-  
-  tft.setTextColor(TFT_BLACK, TFT_WHITE);
-  
-  tft.setCursor(30, 20);
-  tft.println("Trabajo: ");
-  tft.setTextSize(4);
-  tft.setCursor(90, 60);
-  tft.print(trabajo);
-  tft.print(" W ");
-  
-  tft.drawRect(0, 100, 410, 60, TFT_ORANGE);
-  
-  if (valorTrabajo < 1) {
-    valorTrabajo = 0;
-  } else 
-  if (valorTrabajo > 409) {
-    valorTrabajo = 409;
-  }
-  tft.fillRect(1, 101, valorTrabajo, 58, getColor(trabajo, difTrabajo, minTrabajo, maxTrabajo));
-  tft.fillRect(valorTrabajo + 1, 101, 408 - valorTrabajo, 58, TFT_WHITE);
-  
-
-  tft.setTextSize(3);
-  tft.drawRect(0, 260, 410, 60, TFT_ORANGE);
-  
-  if (valorRpm < 1) {
-    valorRpm = 1;
-  } else if (valorRpm > 409) {
-    valorRpm = 409;
-  }
-  tft.fillRect(1, 261, valorRpm, 58, getColor(rpm, difRpm, minRpm, maxRpm));
-  tft.fillRect(valorRpm, 261, 408 - valorRpm, 58, TFT_WHITE);
-  
-  tft.setCursor(60, 180);
-  tft.println("RPM: ");
-  tft.setTextColor(4);
-  tft.setCursor(90, 220);
-  tft.setTextSize(4);
-  tft.print(rpm);
-  tft.print(" RPM ");
-}
 
 void SensorStart() {
 
   //Secuencia de inicio del sensor
 
-  if (pressure.begin())
-    Serial.println("BMP180 init success");
-  else
-  {
-
-    Serial.println("BMP180 init fail (disconnected?)\n\n");
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.print("Barometro: ");
+  if (pressure.begin()){
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    tft.println("OK");
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  } else  {
+    tft.setTextColor(TFT_RED, TFT_BLACK);
+    tft.println("PROBLEMA");
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
     while (1);
   }
 
@@ -990,6 +1499,6 @@ void ReadSensor() {
   }
 
   
-int compBotonPulsado(int bIzquierda, float cantidad, int multiplicador){  
-     return (bIzquierda == 1023) ? (cantidad -= multiplicador) : (cantidad += multiplicador);
+int compBotonPulsado(int bMenos, float cantidad, int multiplicador){  
+     return (bMenos == HIGH) ? (cantidad -= multiplicador) : (cantidad += multiplicador);
 }
