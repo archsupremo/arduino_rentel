@@ -1,53 +1,54 @@
 
+// Se importan las librerías
 
+//librerias complementarias
+#include <Wire.h>
+#include <SPI.h>
+
+//giroscopio
+#include "I2Cdev.h"
+#include "MPU6050_6Axis_MotionApps20.h"
+
+
+//tiempo interno
+/*
 #include <rtc_clock.h>
-
 RTC_clock rtc_clock(RC);
+*/
+//reloj externo
 #include "RTClib1.h"
 RTC_DS1307 rtc;
 
-
+//tarjeta sd
 #include <SD.h>
-//SdFat SD;
 
-#include <SPI.h>
-
-
-
-
-
-
-// Se importan las librerías
-//#include <Time.h>
-//#include <TFT_HX8357.h> PARA MEGA
-//#include <User_Setup.h>
-#include <Wire.h>
+//barometro, altura, temperatura ambiente
 #include <SFE_BMP180.h>
 
+//pantalla
 #include <TFT_HX8357_Due.h> // PARA DUE
+
+
+
 
 //Se declara una instancia de la librería
 TFT_HX8357_Due tft = TFT_HX8357_Due();
-//TFT_HX8357 tft = TFT_HX8357();
+
 SFE_BMP180 pressure;
 
-//declaramos el color cyan que no esta por defecto
+MPU6050 mpu;
+
+
+//declaramos el color cyan que no esta por defecto y el pin q usamos para los grados
 #define TFT_CYAN 0x7FF  
+
+#define INTERRUPT_PIN 11 
 
 //Se declaran las variables. Es necesario tomar en cuenta una presión inicial
 //esta será la presión que se tome en cuenta en el cálculo de la diferencia de altura
 double PresionBase;
 
 //Calculo de RPM
-/*
-volatile byte half_revolutions;
-unsigned int rpm;
-unsigned long timeold;*/
-/*
-const int numreadings = 10;
-int readings[numreadings];
-unsigned long average = 0;
-unsigned long total; */
 
 volatile int rpmcount = 0;//see http://arduino.cc/en/Reference/Volatile 
 unsigned long rpm = 0;
@@ -119,25 +120,57 @@ int num_actual= 0;
 float last_trabajo= 0;
 float last_rpm= 0;
 int refresco =0;
-  float voltaje=0;
-  float consumo=0;
-  float amperaje=0;
-  float tempMotor= 0;
-  float watios=0;
+float voltaje=0;
+float consumo=0;
+float amperaje=0;
+float tempMotor= 0;
+float watios=0;
 String dir = "";
 int last_sec=0;
 File dataFile;
 
+//variables para posicion
+
+// MPU control/status vars
+bool dmpReady = false;  // set true if DMP init was successful
+uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
+uint8_t devStatus;      // return status after each device operation (0 = success, !0 = error)
+uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
+uint16_t fifoCount;     // count of all bytes currently in FIFO
+uint8_t fifoBuffer[64]; // FIFO storage buffer
+
+// orientation/motion vars
+Quaternion q;           // [w, x, y, z]         quaternion container
+VectorInt16 aa;         // [x, y, z]            accel sensor measurements
+VectorInt16 aaReal;     // [x, y, z]            gravity-free accel sensor measurements
+VectorInt16 aaWorld;    // [x, y, z]            world-frame accel sensor measurements
+VectorFloat gravity;    // [x, y, z]            gravity vector
+float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
+
+//stado orientacion
+volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
+void dmpDataReady() {
+    mpuInterrupt = true;
+}
+
+
+float anguloX = 0;
+float anguloY = 0;
+float anguloZ = 0;
+
 
 void setup() {
 
-  Serial.begin(9600);
   tft.begin();
   tft.fillScreen(TFT_WHITE);
   tft.setRotation(1);
-  tft.setTextSize(3);
+  tft.setTextSize(2);
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
   SensorStart();
+  
+  Wire1.begin(); // Inicia el puerto I2C
+  rtc.begin();
+
   
   voltaje=0;
   consumo=0;
@@ -146,7 +179,7 @@ void setup() {
   watios=0;
   tft.print("SD:  ");
   if (SD.begin(10)) { 
-  tft.print(" detectada");
+  tft.print(" detectada. ");
          
     tft.println(" Leyendo archivos");
     File dir_telemetria = SD.open("dir.txt");
@@ -172,6 +205,13 @@ void setup() {
     tft.println("Creando directorio");
     directorio = "dir";
     directorio += num;
+
+
+    
+
+
+
+    
     SD.mkdir(directorio);
     directorio += "/";
     tft.print(directorio);  
@@ -188,10 +228,9 @@ void setup() {
     
   }
    
-delay(5000);
   
   
-  
+  delay(2000);
 
   
   
@@ -216,16 +255,61 @@ delay(5000);
   pinMode(7,INPUT);
   
   // pin de rpm
- attachInterrupt(18, rpm_fan, FALLING);
-  
-//  half_revolutions = 0;
-  //rpm = 0;
- // timeold = 0;
-//  Serial.println("Starting the I2C interface.");
-    Wire1.begin(); // Inicia el puerto I2C
-    rtc.begin();
-  Wire.begin(); // Start the I2C interface.
+  attachInterrupt(18, rpm_fan, FALLING);
 
+  
+  //setup de posicion
+  Wire.begin(); // Start the I2C interface.
+  Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
+
+  Serial.begin(115200);
+    // initialize device
+  tft.println(F("Iniciando dispositivos I2C ..."));
+  mpu.initialize();
+  pinMode(INTERRUPT_PIN, INPUT);
+
+  // verify connection
+  tft.println(F("Comprobando conexion..."));
+  mpu.testConnection() ?  tft.setTextColor(TFT_GREEN, TFT_BLACK) :  tft.setTextColor(TFT_RED, TFT_BLACK);
+  tft.println(mpu.testConnection() ? F("MPU6050 conectado con exito") : F("Fallo al conectar a MPU6050"));
+
+  // wait for ready
+  delay(2000);
+  
+  // load and configure the DMP
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.println(F("Inicializando DMP..."));
+  devStatus = mpu.dmpInitialize();
+
+  // supply your own gyro offsets here, scaled for min sensitivity
+  mpu.setXGyroOffset(220);
+  mpu.setYGyroOffset(76);
+  mpu.setZGyroOffset(-85);
+  mpu.setZAccelOffset(1788); // 1688 factory default for my test chip
+
+
+    if (devStatus == 0) {
+        // turn on the DMP, now that it's ready
+        tft.setTextColor(TFT_GREEN, TFT_BLACK);
+        tft.print(F("Activando giroscopio..."));
+        mpu.setDMPEnabled(true);
+
+        // enable Arduino interrupt detection
+        attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
+        mpuIntStatus = mpu.getIntStatus();
+
+        // set our DMP Ready flag so the main loop() function knows it's okay to use it
+        tft.println(F("OK"));
+        dmpReady = true;
+
+        // get expected DMP packet size for later comparison
+        packetSize = mpu.dmpGetFIFOPacketSize();
+    } else {
+        tft.setTextColor(TFT_RED, TFT_BLACK);
+        tft.print(F("ERROR con giroscopio"));
+    }
+    delay(4000);
+    
   tft.fillScreen(TFT_WHITE);
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
 }
@@ -244,9 +328,55 @@ void loop() {
        
        last_sec = now.second(); // Uptade lasmillis
        attachInterrupt(18, rpm_fan, FALLING); //enable interrupt
-    
-      pintarTelemetria();
+      //pintarTelemetria();
   }
+
+
+  /*=========================================================================
+                                INICIO DE CALCULO DE POSICION
+   =========================================================================*/
+
+
+
+    // reset interrupt flag and get INT_STATUS byte
+    mpuInterrupt = false;
+    mpuIntStatus = mpu.getIntStatus();
+
+    // get current FIFO count
+    fifoCount = mpu.getFIFOCount();
+
+    // check for overflow (this should never happen unless our code is too inefficient)
+    
+    if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
+        // reset so we can continue cleanly
+        mpu.resetFIFO();
+        Serial.println(F("FIFO overflow!"));
+
+    // otherwise, check for DMP data ready interrupt (this should happen frequently)
+    } else if (mpuIntStatus & 0x02) {
+        // wait for correct available data length, should be a VERY short wait
+        while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
+
+        // read a packet from FIFO
+        mpu.getFIFOBytes(fifoBuffer, packetSize);
+        
+        // track FIFO count here in case there is > 1 packet available
+        // (this lets us immediately read more without waiting for an interrupt)
+        fifoCount -= packetSize;
+
+        mpu.dmpGetQuaternion(&q, fifoBuffer);
+        mpu.dmpGetGravity(&gravity, &q);
+        mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+        anguloZ = ypr[0] * 180/M_PI;
+        anguloX = ypr[1] * 180/M_PI;
+        anguloY = ypr[2] * 180/M_PI;
+
+    }
+
+    
+  /*=========================================================================
+                                FIN DE CALCULO DE POSICION
+   =========================================================================*/
 
   // Se hace lectura del sensor, altura y temperatura ambiente
   ReadSensor();
@@ -638,6 +768,7 @@ void nuevoDir() {
  pulsosRpm = getValor("pulsos");
     
 
+     tft.setTextColor(TFT_WHITE, TFT_BLACK);
     tft.println(" datos cargados");
     
     
@@ -656,8 +787,6 @@ Serial.print("temp");
 Serial.print(tempMotor);
 Serial.print("rpm");
 Serial.print(revs);
-Serial.print("temp2");
-Serial.print(Temperatura);
 Serial.print("fin");
 
 
@@ -1094,6 +1223,8 @@ void pantallaGeneral() {
   
   tft.drawRect(0,135,220,50,TFT_RED);
   
+  tft.drawRect(0,255,455,50,TFT_RED);
+  
   tft.drawRect(235,15,220,50,TFT_RED);
   
   tft.drawRect(235,75,220,50,TFT_RED);
@@ -1158,6 +1289,20 @@ void pantallaGeneral() {
   tft.setTextSize(3);
   tft.print((amperaje)*voltaje, 1);
   tft.println(" W ");
+  
+  tft.setTextSize(2);
+  tft.setCursor(10, 260);
+  tft.println("Angulos xyz: en grados ");
+  tft.setCursor(10, 280);
+  tft.setTextSize(2);
+  tft.print("x: ");
+  tft.print(anguloX);
+  tft.print(", ");
+  tft.print("y: ");
+  tft.print(anguloY);
+  tft.print(", ");
+  tft.print("z: ");
+  tft.print(anguloZ);
 
   
   tft.setTextSize(2);
@@ -1488,6 +1633,8 @@ void ReadSensor() {
   //En este método se hacen las lecturas de presión y temperatura y se calcula la altura
 
   //Se inicia la lectura de temperatura
+  
+  tft.setTextColor(TFT_RED, TFT_BLACK);
   status = pressure.startTemperature();
   if (status != 0)
   {
@@ -1510,13 +1657,14 @@ void ReadSensor() {
           //Se hace el cálculo de la altura en base a la presión leída en el Setup
           Altura = pressure.altitude(Presion, PresionBase);
         }
-        else Serial.println("error en la lectura de presion\n");
+        else tft.println("error en la lectura de presion\n");
       }
-      else Serial.println("error iniciando la lectura de presion\n");
+      else tft.println("error iniciando la lectura de presion\n");
     }
-    else Serial.println("error en la lectura de temperatura\n");
+    else tft.println("error en la lectura de temperatura\n");
   }
-  else Serial.println("error iniciando la lectura de temperatura\n");
+  else tft.println("error iniciando la lectura de temperatura\n");
+  tft.setTextColor(TFT_GREEN, TFT_BLACK);
 
 }
 /*
