@@ -10,14 +10,11 @@
 #include "MPU6050_6Axis_MotionApps20.h"
 
 
-//tiempo interno
-/*
-#include <rtc_clock.h>
-RTC_clock rtc_clock(RC);
-*/
+
 //reloj externo
 #include "RTClib1.h"
 RTC_DS1307 rtc;
+RTC_Millis rtced;
 
 //tarjeta sd
 #include <SD.h>
@@ -108,7 +105,6 @@ int cursorConfig = 0;
 int multiplicador = 1;
 int cursorAccion = 0;
 int cursorGrafica = 0;
-float tamanoBateria = 0;
 int tiempoGrafica = 1000; //esta en milisegundos
 int sec = 0;
 int pulsosRpm = 10;
@@ -120,7 +116,14 @@ int num_actual= 0;
 float last_trabajo= 0;
 float last_rpm= 0;
 int refresco =0;
+
+
 float voltaje=0;
+float voltaje_inicial = 0;
+float minimoPorciento = 0;
+
+
+float porciento=0;
 float consumo=0;
 float amperaje=0;
 float tempMotor= 0;
@@ -154,9 +157,18 @@ void dmpDataReady() {
 }
 
 
-float anguloX = 0;
-float anguloY = 0;
-float anguloZ = 0;
+float anguloX = 0;//pitch
+float anguloY = 0;//roll
+float anguloZ = 0;//yaw
+
+float accelX = 0; // arriba abajo
+float accelY = 0; // izquierda derecha
+float accelZ = 0; // adelante atras?
+
+int sec_pasados = 0;
+
+float puntoMedio = 1.276;
+float salto = 0.008;
 
 
 void setup() {
@@ -170,7 +182,6 @@ void setup() {
   
   Wire1.begin(); // Inicia el puerto I2C
   rtc.begin();
-
   
   voltaje=0;
   consumo=0;
@@ -258,6 +269,8 @@ void setup() {
   attachInterrupt(18, rpm_fan, FALLING);
 
   
+  DateTime pasa = rtc.now();
+  sec_pasados = pasa.unixtime();
   //setup de posicion
   Wire.begin(); // Start the I2C interface.
   Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
@@ -285,7 +298,7 @@ void setup() {
   mpu.setXGyroOffset(220);
   mpu.setYGyroOffset(76);
   mpu.setZGyroOffset(-85);
-  mpu.setZAccelOffset(1788); // 1688 factory default for my test chip
+  mpu.setZAccelOffset(800); // 1788 staba puesto, 800 da mas cercano a 0
 
 
     if (devStatus == 0) {
@@ -315,23 +328,9 @@ void setup() {
 }
 
 void loop() {
-  
-  DateTime now = rtc.now();
-  
- if (now.second() != last_sec){  /*Uptade every one second, this will be equal to reading frecuency (Hz).*/
- 
-       detachInterrupt(18);    //Disable interrupt when calculating
-       revs = rpmcount * 6;  /* Convert frecuency to RPM, note: this works for one interruption per full rotation. For two interrups per full rotation use rpmcount * 30.*/
-       
-       
-       rpmcount = 0; // Restart the RPM counter
-       
-       last_sec = now.second(); // Uptade lasmillis
-       attachInterrupt(18, rpm_fan, FALLING); //enable interrupt
-      //pintarTelemetria();
-  }
 
 
+  
   /*=========================================================================
                                 INICIO DE CALCULO DE POSICION
    =========================================================================*/
@@ -350,7 +349,7 @@ void loop() {
     if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
         // reset so we can continue cleanly
         mpu.resetFIFO();
-        Serial.println(F("FIFO overflow!"));
+        //Serial.println(F("FIFO overflow!"));
 
     // otherwise, check for DMP data ready interrupt (this should happen frequently)
     } else if (mpuIntStatus & 0x02) {
@@ -368,8 +367,28 @@ void loop() {
         mpu.dmpGetGravity(&gravity, &q);
         mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
         anguloZ = ypr[0] * 180/M_PI;
+        if (anguloZ <0) {
+          anguloZ = 360 + anguloZ; 
+        }
         anguloX = ypr[1] * 180/M_PI;
+        if (anguloX <0) {
+          anguloX = 360 + anguloX; 
+        }
         anguloY = ypr[2] * 180/M_PI;
+        if (anguloY <0) {
+          anguloY = 360 + anguloY; 
+        }
+
+        
+        mpu.dmpGetAccel(&aa, fifoBuffer);
+        mpu.dmpGetGravity(&gravity, &q);
+        mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
+        accelX = aaReal.x;
+        accelX = accelX / 8192;
+        accelY = aaReal.y;
+        accelY = accelY / 8192;
+        accelZ = aaReal.z;
+        accelZ = accelZ / 8192;
 
     }
 
@@ -389,6 +408,7 @@ void loop() {
   // Se imprimen las variables
    voltaje = analogRead(A0);
   voltaje = voltaje / 9.3; 
+  porciento = (voltaje / voltaje_inicial) * 100;
   /*
   1023 -> 3.3
   x -> 3
@@ -407,16 +427,55 @@ void loop() {
  
   // Amperaje
   float amp2 = consumo ;
+  float puntoMedioValor = (1023 * puntoMedio)/3.3;//395.56
+  float maximoValor = (salto * 200) + puntoMedio;
+  maximoValor = (1023 * maximoValor)/3.3;
+  float diferenciaValor = maximoValor - puntoMedioValor;//496
+  float minimoValor = ((puntoMedioValor * 200) / diferenciaValor)* -1;
+  float amperaje= map(amp2, 0, maximoValor , minimoValor, 200);
+
+
+
+/*
   float amperaje2= map(amp2, 0, 892 , -159, 200);//697.5
    amperaje=amperaje2 ;
-  /*
+  
   1023 -> 3.3
   x -> 2.876
   x=891.56
 
+puntoMedio = 1.276;
+salto = 0.008;
+
+puntoMedioValor = (1023 * puntoMedio)/3.3;//395.56
+maximoValor = (salto * 200) + puntoMedio;
+maximoValor = (1023 * maximoValor)/3.3;
+
+
+
+
+
+  1.276 -1.6 = -0.324
+
+  - 0.324 -> -200
+  0 -> 
+diferenciaValor = maximoValor - puntoMedioValor;496
+minimoValor = ((puntoMedioValor * 200) / diferenciaValor)* -1;
+
+ float amperaje2= map(amp2, 0, maximoValor , minimoValor, 200);
+
+
+  
+  496 200
+
+  395.56 
+
   1023 3.3
-  x    1.276-1
-  395.56
+  x    1.276
+  
+  1.276 + 200 * 0.008
+  
+  395.56 == 0 Amp
   */
    watios = voltaje * amperaje;
   //Temp motor
@@ -453,22 +512,6 @@ void loop() {
       tft.fillScreen(TFT_WHITE);
   }
 
-  //Calculamos las revs
-  /*
-  if (half_revolutions >=150) { 
-       //Al aumentar 40 aumenta la resolucion, al disminuir aumenta la velocidad de refresco
-       rpm = (30*1000/(millis() - timeold)*((half_revolutions/pulsosRpm)*2));
-       timeold = millis();
-       half_revolutions = 0;
-       contador = 0;
-     }
- */
-  
-
-
-
-
-
 
     //Calculamos donde estamos
     if ((bCampo == HIGH || bMas == HIGH || bMenos == HIGH) && menu != 0 && menu != 3 && menu != 4) {
@@ -481,14 +524,6 @@ void loop() {
       }
         tft.fillScreen(TFT_WHITE);
     } 
-    //else if ((bMas == HIGH || bMenos == HIGH) && menu != 0 && menu != 3) {
-//      if (menu == 1){
-//        menu = 2;
-//      } else {
-//        menu--;
-//      }      
-//        tft.fillScreen(TFT_WHITE);
-//    }
     
      tft.setTextColor(TFT_BLACK,TFT_WHITE);
      
@@ -520,8 +555,25 @@ void loop() {
 }
 
 void rpm_fan(){ /* this code will be executed every time the interrupt 0 (pin2) gets low.*/
+  
   rpmcount++;
+  
+  DateTime now = rtc.now();
+  
+ if (now.second() != last_sec){  /*Uptade every one second, this will be equal to reading frecuency (Hz).*/
+ 
+       detachInterrupt(18);    //Disable interrupt when calculating
+       revs = rpmcount * 60 / pulsosRpm;  /* Convert frecuency to RPM, note: this works for one interruption per full rotation. For two interrups per full rotation use rpmcount * 30.*/
+       
+       
+       rpmcount = 0; // Restart the RPM counter
+       
+       last_sec = now.second(); // Uptade lasmillis
+       attachInterrupt(18, rpm_fan, FALLING); //enable interrupt
+       pintarTelemetria();
+  }
 }
+
 void limpiar(){  
   if (refresco >= 1000) {
     tft.fillScreen(TFT_WHITE);
@@ -546,7 +598,11 @@ void subMenu2 (float rpm, float watios) {
   tft.setCursor(10,170);
   tft.println("Revs/min:");
   tft.setCursor(20,210);
-  tft.print(revs);
+  if (revs  < 20) {    
+    tft.print("0");          
+  } else {    
+    tft.print(revs, DEC);      
+  }
   tft.println("  ");
   
     
@@ -746,6 +802,7 @@ void nuevoDir() {
     
  minVoltaje = getValor("min_v");
  maxVoltaje = getValor("max_v");
+ voltaje_inicial = maxVoltaje;
 
  minAmperios = getValor("min_a");
  maxAmperios = getValor("max_a");
@@ -783,10 +840,24 @@ Serial.print("amp");
 Serial.print(amperaje);
 Serial.print("wats");
 Serial.print(watios);
-Serial.print("temp");
+Serial.print("tempCtrl");
 Serial.print(tempMotor);
 Serial.print("rpm");
 Serial.print(revs);
+Serial.print("tempAmb");
+Serial.print(Temperatura);
+Serial.print("angX");
+Serial.print(anguloX);
+Serial.print("angY");
+Serial.print(anguloY);
+Serial.print("angZ");
+Serial.print(anguloZ);
+Serial.print("accX");
+Serial.print(accelX);
+Serial.print("accY");
+Serial.print(accelY);
+Serial.print("accZ");
+Serial.print(accelZ);
 Serial.print("fin");
 
 
@@ -1048,11 +1119,6 @@ void accion(int bCampo, int bMenos, int bMas, int bVuelta) {
   tft.print(tiempoGrafica);
   tft.print("   ms");
   
-  tft.setCursor(20, 260);
-  tft.println("Bateria (kW) => ");
-  tft.setCursor(250, 260);
-  tft.print(tamanoBateria);
-  tft.print("   kw");
 
   if (bVuelta == HIGH) {
       if (multiplicador >= 1000){
@@ -1063,7 +1129,7 @@ void accion(int bCampo, int bMenos, int bMas, int bVuelta) {
    }
 
    if (bCampo == HIGH) {
-      if (cursorAccion == 11){
+      if (cursorAccion == 10){
         cursorAccion = 0;
       } else {
         cursorAccion++;
@@ -1104,10 +1170,10 @@ void accion(int bCampo, int bMenos, int bMas, int bVuelta) {
           break;
         case 10: 
           tft.fillCircle(195, 225, 5,TFT_GREEN);
-          break;
+          break;/*
         case 11: 
           tft.fillCircle(215, 265, 5,TFT_GREEN);
-          break;
+          break;*/
         default: break;
       }
 
@@ -1167,10 +1233,10 @@ void accion(int bCampo, int bMenos, int bMas, int bVuelta) {
           break;
         case 10: 
           tiempoGrafica = compBotonPulsado(bMenos, tiempoGrafica, multiplicador);
-          break;
+          break;/*
         case 11: 
           tamanoBateria = compBotonPulsado(bMenos, tamanoBateria, multiplicador);
-          break;
+          break;*/
         default: break;
       }
     }
@@ -1223,7 +1289,6 @@ void pantallaGeneral() {
   
   tft.drawRect(0,135,220,50,TFT_RED);
   
-  tft.drawRect(0,255,455,50,TFT_RED);
   
   tft.drawRect(235,15,220,50,TFT_RED);
   
@@ -1254,11 +1319,11 @@ void pantallaGeneral() {
   tft.setCursor(240, 40);
   tft.setTextSize(3);
   
- /* if (rpm  == 0) {    
-    tft.print("0m");          
-  } else {    */
+  if (revs  < 20) {    
+    tft.print("0");          
+  } else {    
     tft.print(revs, DEC);      
- /* }*/
+  }
   tft.println(" RPM  ");
        
 
@@ -1291,19 +1356,13 @@ void pantallaGeneral() {
   tft.println(" W ");
   
   tft.setTextSize(2);
-  tft.setCursor(10, 260);
-  tft.println("Angulos xyz: en grados ");
-  tft.setCursor(10, 280);
-  tft.setTextSize(2);
-  tft.print("x: ");
-  tft.print(anguloX);
-  tft.print(", ");
-  tft.print("y: ");
-  tft.print(anguloY);
-  tft.print(", ");
-  tft.print("z: ");
-  tft.print(anguloZ);
-
+  tft.drawRect(235,255,220,70,TFT_RED);
+  tft.setCursor(240, 260);
+  tft.println("Bateria restante");
+  tft.setCursor(240, 280);
+  tft.setTextSize(3);
+  tft.print(porciento);
+  tft.print(" % ");
   
   tft.setTextSize(2);
   tft.setCursor(240, 140);
@@ -1366,17 +1425,17 @@ void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
           tft.fillCircle(243, 185, 5,TFT_GREEN);
           break;
         case 9: 
-          tft.fillCircle(50, 285, 5,TFT_GREEN);
-          break;
-        case 10: 
-          tft.fillCircle(240, 285, 5,TFT_GREEN);
-          break;/*
-        case 11: 
           tft.fillCircle(50, 235, 5,TFT_GREEN);
           break;
-        case 12: 
+        case 10: 
           tft.fillCircle(240, 235, 5,TFT_GREEN);
-          break;     */
+          break;  
+        case 12: 
+          tft.fillCircle(50, 285, 5,TFT_GREEN);
+          break;
+        case 13: 
+          tft.fillCircle(240, 285, 5,TFT_GREEN);
+          break;   
         default: break;
       }
 
@@ -1404,7 +1463,8 @@ void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
           tft.fillCircle(50, 35, 5,TFT_GREEN);
           break;
         case 1: 
-          maxVoltaje = compBotonPulsado(bMenos, maxVoltaje, multiplicador); 
+          maxVoltaje = compBotonPulsado(bMenos, maxVoltaje, multiplicador);           
+          voltaje_inicial = maxVoltaje;
           setValor("max_v", maxVoltaje);
           tft.fillCircle(240, 35, 5,TFT_GREEN);
           break;
@@ -1444,23 +1504,27 @@ void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
           tft.fillCircle(243, 185, 5,TFT_GREEN);
           break;
         case 9: 
+          salto = compBotonPulsado(bMenos, salto, multiplicador); 
+          tft.fillCircle(50, 235, 5,TFT_GREEN);
+          break;
+        case 10: 
+          puntoMedio = compBotonPulsado(bMenos, puntoMedio, multiplicador); 
+          tft.fillCircle(150, 235, 5,TFT_GREEN);
+          break;
+        case 11: 
+          minimoPorciento = compBotonPulsado(bMenos, minimoPorciento, multiplicador); 
+          tft.fillCircle(250, 235, 5,TFT_GREEN);
+          break;
+        case 12: 
           minTrabajo = compBotonPulsado(bMenos, minTrabajo, multiplicador); 
           setValor("min_w", minTrabajo);
           tft.fillCircle(50, 285, 5,TFT_GREEN);
           break;
-        case 10: 
+        case 13: 
           maxTrabajo = compBotonPulsado(bMenos, maxTrabajo, multiplicador); 
           setValor("max_w", maxTrabajo);
           tft.fillCircle(240, 285, 5,TFT_GREEN);
           break;
-        /*case 11: 
-//          tempControlMin = compBotonPulsado(bMenos, tempControlMin, multiplicador); 
-          tft.fillCircle(50, 235, 5,TFT_GREEN);
-          break;
-        case 12: 
- //         tempControlMax = compBotonPulsado(bMenos, tempControlMax, multiplicador); 
-          tft.fillCircle(240, 235, 5,TFT_GREEN);
-          break;*/
         default: break;
       }
     }
@@ -1554,38 +1618,79 @@ void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
 
 void hora(){
   
+
+  DateTime hora_actual = rtc.now();
+  int sec_actual = hora_actual.unixtime();
+  DateTime pasado = (sec_actual - sec_pasados) + (3600 * 17) + (60 * 31)+44;//xq seg 0 empieza a 6:28:16
+
+
+
+  
+
+
+
+  
   tft.drawRect(0,195,220,50,TFT_RED);
   
-  //time_t t = now();  
+  DateTime tiempo_vuelo = rtc.now();
+
+  
+  tft.drawRect(0,255,220,70,TFT_RED);
+  
   tft.setTextSize(2);
   
-  tft.setCursor(10, 200);
-  
-  
+  tft.setCursor(10, 200);  
   tft.println("Tiempo de Vuelo: ");
+  tft.setCursor(10, 260);  
+  tft.println("Hora actual:");
   
-  tft.setCursor(30, 220);
+  tft.setCursor(30, 280);
   
   tft.setTextSize(3);
 
-  if (rtc_clock.get_hours() < 10) {
+  if (hora_actual.hour() < 10) {
     tft.print("0");
   }
-  tft.print(rtc_clock.get_hours());
+  tft.print(hora_actual.hour());
   
   tft.print(":");
   
-  if (rtc_clock.get_minutes() < 10) {
+  if (hora_actual.minute() < 10) {
     tft.print("0");
   }
-  tft.print(rtc_clock.get_minutes());
+  tft.print(hora_actual.minute());
   
   tft.print(":");
   
-  if (rtc_clock.get_seconds() < 10) {
+  if (hora_actual.second() < 10) {
     tft.print("0");
   }
-  tft.print(rtc_clock.get_seconds());
+  tft.print(hora_actual.second());
+
+  
+  tft.setCursor(30, 220);
+
+  
+  //Serial.print(sec_actual - sec_pasados);
+
+  if (pasado.hour() < 10) {
+    tft.print("0");
+  }
+  tft.print(pasado.hour());
+  
+  tft.print(":");
+  
+  if (pasado.minute() < 10) {
+    tft.print("0");
+  }
+  tft.print(pasado.minute());
+  
+  tft.print(":");
+  
+  if (pasado.second() < 10) {
+    tft.print("0");
+  }
+  tft.print(pasado.second());
   
   tft.setCursor(0, 0);
 }
