@@ -3,6 +3,8 @@
 #include <rtc_clock.h>
 
 RTC_clock rtc_clock(RC);
+#include "RTClib1.h"
+RTC_DS1307 rtc;
 
 
 #include <SD.h>
@@ -16,9 +18,9 @@ RTC_clock rtc_clock(RC);
 
 
 // Se importan las librerías
-#include <Time.h>
+//#include <Time.h>
 //#include <TFT_HX8357.h> PARA MEGA
-#include <User_Setup.h>
+//#include <User_Setup.h>
 #include <Wire.h>
 #include <SFE_BMP180.h>
 
@@ -41,11 +43,11 @@ double PresionBase;
 volatile byte half_revolutions;
 unsigned int rpm;
 unsigned long timeold;*/
-
+/*
 const int numreadings = 10;
 int readings[numreadings];
 unsigned long average = 0;
-unsigned long total; 
+unsigned long total; */
 
 volatile int rpmcount = 0;//see http://arduino.cc/en/Reference/Volatile 
 unsigned long rpm = 0;
@@ -123,6 +125,7 @@ int refresco =0;
   float tempMotor= 0;
   float watios=0;
 String dir = "";
+int last_sec=0;
 File dataFile;
 
 
@@ -143,6 +146,7 @@ void setup() {
   watios=0;
   tft.print("SD:  ");
   if (SD.begin(10)) { 
+  tft.print(" detectada");
          
     tft.println(" Leyendo archivos");
     File dir_telemetria = SD.open("dir.txt");
@@ -218,35 +222,30 @@ delay(5000);
   //rpm = 0;
  // timeold = 0;
 //  Serial.println("Starting the I2C interface.");
+    Wire1.begin(); // Inicia el puerto I2C
+    rtc.begin();
   Wire.begin(); // Start the I2C interface.
 
-  rtc_clock.init();
-  rtc_clock.set_time(0, 0, 0);
   tft.fillScreen(TFT_WHITE);
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
 }
 
 void loop() {
   
+  DateTime now = rtc.now();
   
- if (millis() - lastmillis >= 1000){  /*Uptade every one second, this will be equal to reading frecuency (Hz).*/
+ if (now.second() != last_sec){  /*Uptade every one second, this will be equal to reading frecuency (Hz).*/
  
        detachInterrupt(18);    //Disable interrupt when calculating
-       total = 0;  
        revs = rpmcount * 6;  /* Convert frecuency to RPM, note: this works for one interruption per full rotation. For two interrups per full rotation use rpmcount * 30.*/
        
-       for (int x=0; x<=9; x++){
-         total = total + readings[x];
-       }
-       
-       average = total / numreadings;
-       rpm = average;
        
        rpmcount = 0; // Restart the RPM counter
-        
        
-       lastmillis = millis(); // Uptade lasmillis
-        attachInterrupt(18, rpm_fan, FALLING); //enable interrupt
+       last_sec = now.second(); // Uptade lasmillis
+       attachInterrupt(18, rpm_fan, FALLING); //enable interrupt
+    
+      pintarTelemetria();
   }
 
   // Se hace lectura del sensor, altura y temperatura ambiente
@@ -387,7 +386,6 @@ void loop() {
         getTelemetria(bCampo, bMas, bMenos, bVuelta);
      } 
      
-
     comprobar();
 }
 
@@ -647,7 +645,22 @@ void nuevoDir() {
 }
 
 void getTelemetria(int bCampo, int bMas, int bMenos, int bVuelta){
-  
+  /*Muestro los datos para labview*/
+Serial.print("start");
+Serial.print(voltaje);
+Serial.print("amp");
+Serial.print(amperaje);
+Serial.print("wats");
+Serial.print(watios);
+Serial.print("temp");
+Serial.print(tempMotor);
+Serial.print("rpm");
+Serial.print(revs);
+Serial.print("temp2");
+Serial.print(Temperatura);
+Serial.print("fin");
+
+
     limpiar();
     tft.setTextSize(2);
     tft.setCursor(10,10);
