@@ -37,11 +37,21 @@ SFE_BMP180 pressure;
 double PresionBase;
 
 //Calculo de RPM
+/*
 volatile byte half_revolutions;
 unsigned int rpm;
-unsigned long timeold;
+unsigned long timeold;*/
 
+const int numreadings = 10;
+int readings[numreadings];
+unsigned long average = 0;
+unsigned long total; 
 
+volatile int rpmcount = 0;//see http://arduino.cc/en/Reference/Volatile 
+unsigned long rpm = 0;
+unsigned long lastmillis = 0;
+
+int revs =0;
 //COSAS DEL SENSOR DE ALTURA
 //Leeremos presión y temperatura. Calcularemos la diferencia de altura
 double Presion = 0;
@@ -202,11 +212,11 @@ delay(5000);
   pinMode(7,INPUT);
   
   // pin de rpm
-  attachInterrupt(digitalPinToInterrupt(18), rpm_fun, RISING);
+ attachInterrupt(18, rpm_fan, FALLING);
   
-  half_revolutions = 0;
-  rpm = 0;
-  timeold = 0;
+//  half_revolutions = 0;
+  //rpm = 0;
+ // timeold = 0;
 //  Serial.println("Starting the I2C interface.");
   Wire.begin(); // Start the I2C interface.
 
@@ -217,6 +227,27 @@ delay(5000);
 }
 
 void loop() {
+  
+  
+ if (millis() - lastmillis >= 1000){  /*Uptade every one second, this will be equal to reading frecuency (Hz).*/
+ 
+       detachInterrupt(18);    //Disable interrupt when calculating
+       total = 0;  
+       revs = rpmcount * 6;  /* Convert frecuency to RPM, note: this works for one interruption per full rotation. For two interrups per full rotation use rpmcount * 30.*/
+       
+       for (int x=0; x<=9; x++){
+         total = total + readings[x];
+       }
+       
+       average = total / numreadings;
+       rpm = average;
+       
+       rpmcount = 0; // Restart the RPM counter
+        
+       
+       lastmillis = millis(); // Uptade lasmillis
+        attachInterrupt(18, rpm_fan, FALLING); //enable interrupt
+  }
 
   // Se hace lectura del sensor, altura y temperatura ambiente
   ReadSensor();
@@ -235,28 +266,35 @@ void loop() {
   x =930
   930/y=100*/
    consumo = analogRead(A1);
+   /*8mv x a
+   //3.3 / 1023
+   // /8 
+   3300 1023
+   0 0
+   8 2.48 =~ 2
+   1 0.31
+   
+   */
  
   // Amperaje
   float amp2 = consumo ;
-  float amperaje2= map(amp2, 388, 698 , 0, 2000);//697.5
-   amperaje=amperaje2 / 10;
+  float amperaje2= map(amp2, 0, 892 , -159, 200);//697.5
+   amperaje=amperaje2 ;
   /*
   1023 -> 3.3
-  x -> 2.25
-  x=697.5
+  x -> 2.876
+  x=891.56
 
   1023 3.3
-  x    1.25
-  387.5
+  x    1.276-1
+  395.56
   */
    watios = voltaje * amperaje;
   //Temp motor
   float temp = analogRead(A2);
   float volts = (temp / 1024.0) * 3.3;
-   tempMotor = (volts) * 100; 
-  if (tempMotor < 0){
-    tempMotor = tempMotor * -1;
-  }
+   tempMotor = (volts) * 100;
+   tempMotor += 1 ; 
 
 
 
@@ -287,24 +325,30 @@ void loop() {
   }
 
   //Calculamos las revs
-  if (half_revolutions >= 150) { 
+  /*
+  if (half_revolutions >=150) { 
        //Al aumentar 40 aumenta la resolucion, al disminuir aumenta la velocidad de refresco
-       rpm = (30*1000/(millis() - timeold)*(half_revolutions/pulsosRpm))*2;
+       rpm = (30*1000/(millis() - timeold)*((half_revolutions/pulsosRpm)*2));
        timeold = millis();
        half_revolutions = 0;
        contador = 0;
-     } else if(contador == 10) {
-       rpm=0;
-       contador = 0;
      }
-     contador++;
+ */
+  
+
+
+
+
+
 
     //Calculamos donde estamos
     if ((bCampo == HIGH || bMas == HIGH || bMenos == HIGH) && menu != 0 && menu != 3 && menu != 4) {
       if (menu == 2){
         menu = 1;
+        delay(200);
       } else {
         menu++;
+        delay(200);
       }
         tft.fillScreen(TFT_WHITE);
     } 
@@ -319,11 +363,11 @@ void loop() {
     
      tft.setTextColor(TFT_BLACK,TFT_WHITE);
      
-     
+     /*
     if (rtc_clock.get_seconds() == sec) {
       pintarTelemetria();
     }
-  
+  */
      
      
      if (menu == 0) {
@@ -347,6 +391,9 @@ void loop() {
     comprobar();
 }
 
+void rpm_fan(){ /* this code will be executed every time the interrupt 0 (pin2) gets low.*/
+  rpmcount++;
+}
 void limpiar(){  
   if (refresco >= 1000) {
     tft.fillScreen(TFT_WHITE);
@@ -371,7 +418,7 @@ void subMenu2 (float rpm, float watios) {
   tft.setCursor(10,170);
   tft.println("Revs/min:");
   tft.setCursor(20,210);
-  tft.print(rpm);
+  tft.print(revs);
   tft.println("  ");
   
     
@@ -388,18 +435,18 @@ void subMenu2 (float rpm, float watios) {
     }
     last_trabajo= 0;
   }
-  if (rpm >= minRpm && rpm <= maxRpm){
-    pintar(250,310,100,minRpm - maxRpm, rpm, TFT_BLACK);
-    if (rpm != last_rpm) {
-      pintar(250,310,100,minRpm - maxRpm, last_rpm, TFT_WHITE);
+  if (revs >= minRpm && revs <= maxRpm){
+    pintar(250,310,100,maxRpm - minRpm, revs, TFT_BLACK);
+    if (revs != last_rpm) {
+      pintar(250,310,100,maxRpm - minRpm, last_rpm, TFT_WHITE);
     }
-    last_rpm= rpm;
+    last_rpm= revs;
   }else {    
     pintar(250,310,100,minRpm - maxRpm, 0, TFT_BLACK);
-    if (rpm != last_rpm) {
+    if (revs != last_rpm) {
       pintar(250,310,100,minRpm - maxRpm, last_rpm, TFT_WHITE);
     }
-    last_rpm= rpm;
+    last_rpm= 0;
   }
 
     tft.setTextSize(1);
@@ -520,8 +567,6 @@ void pintarWarning (int cx, int cy, int longitud,  int color) {
      valor = map(campo,0,res,0,100);
      x= cos(valor/100 * PI)*longitud;
      y= sin(valor/100 * PI)*longitud;
-    tft.println(x);
-    tft.println(y);
     tft.drawLine(cx,cy,cx -x,cy-y,color);
     tft.drawLine(cx+1,cy+3,cx -x,cy-y,color);
     tft.drawLine(cx+2,cy+2,cx -x,cy-y,color);
@@ -556,7 +601,7 @@ void pintarWarning (int cx, int cy, int longitud,  int color) {
         telemetria = telemetria + "&watios;";
         telemetria = telemetria +(voltaje * amperaje);
         telemetria = telemetria + "&rpm;";
-        telemetria = telemetria + rpm;
+        telemetria = telemetria + revs;
         telemetria = telemetria + "&temp;";
         telemetria = telemetria + tempMotor;
 
@@ -583,8 +628,8 @@ void nuevoDir() {
 // tempControlMin = getValor("min_t");
 // tempControlMax = getValor("max_t");
 
- minRpm = 0;//getValor("min_r");
- maxRpm = 3000;//getValor("max_r");
+ minRpm = getValor("min_r");
+ maxRpm = getValor("max_r");
 
  minTemp = getValor("min_t");
  maxTemp = getValor("max_t");
@@ -1065,11 +1110,11 @@ void pantallaGeneral() {
   tft.setCursor(240, 40);
   tft.setTextSize(3);
   
-  if (rpm  == NULL || rpm  == 0) {    
-    tft.print("0");          
-  } else {    
-    tft.print(rpm, DEC);      
-  }
+ /* if (rpm  == 0) {    
+    tft.print("0m");          
+  } else {    */
+    tft.print(revs, DEC);      
+ /* }*/
   tft.println(" RPM  ");
        
 
@@ -1232,22 +1277,22 @@ void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
           break;
         case 7: 
           minRpm = compBotonPulsado(bMenos, minRpm, multiplicador); 
-          setValor("max_r", minRpm);
+          setValor("min_r", minRpm);
           tft.fillCircle(113, 185, 5,TFT_GREEN);
           break;
         case 8: 
           maxRpm = compBotonPulsado(bMenos, maxRpm, multiplicador); 
-          setValor("min_r", maxRpm);
+          setValor("max_r", maxRpm);
           tft.fillCircle(243, 185, 5,TFT_GREEN);
           break;
         case 9: 
           minTrabajo = compBotonPulsado(bMenos, minTrabajo, multiplicador); 
-          setValor("max_w", minTrabajo);
+          setValor("min_w", minTrabajo);
           tft.fillCircle(50, 285, 5,TFT_GREEN);
           break;
         case 10: 
           maxTrabajo = compBotonPulsado(bMenos, maxTrabajo, multiplicador); 
-          setValor("min_w", maxTrabajo);
+          setValor("max_w", maxTrabajo);
           tft.fillCircle(240, 285, 5,TFT_GREEN);
           break;
         /*case 11: 
@@ -1368,14 +1413,14 @@ void hora(){
   if (rtc_clock.get_hours() < 10) {
     tft.print("0");
   }
-  tft.print(rtc_clock.get_minutes());
+  tft.print(rtc_clock.get_hours());
   
   tft.print(":");
   
   if (rtc_clock.get_minutes() < 10) {
     tft.print("0");
   }
-  tft.print(rtc_clock.get_hours());
+  tft.print(rtc_clock.get_minutes());
   
   tft.print(":");
   
@@ -1461,12 +1506,12 @@ void ReadSensor() {
   else Serial.println("error iniciando la lectura de temperatura\n");
 
 }
-
+/*
  void rpm_fun()
  {
    half_revolutions++;
  }
-
+*/
  int getColor(float valor, float diferencia, float minimo, float maximo) {
     int color = TFT_BLACK;
     if (valor <= minimo) {    
