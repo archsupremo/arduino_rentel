@@ -10,6 +10,11 @@
 #include "MPU6050_6Axis_MotionApps20.h"
 
 
+//reloj interno
+
+#include <rtc_clock.h>
+RTC_clock rtc_clock(RC);
+RTC_clock rtc_interno(RC);
 
 //reloj externo
 #include "RTClib1.h"
@@ -71,15 +76,6 @@ float difAmperios = (maxAmperios - minAmperios) / 5;
 float accionAmperios = maxAmperios;
 int comprobarAmperios = 0;
 
-float tempMotorMin = 20;
-float tempMotorMax = 80;
-float difTempMotor = (tempMotorMax - tempMotorMin) / 5;
-float accionTempControl = tempMotorMax;
-int comprobarTempControl = 0;
-//
-//float tempControlMin = 20;
-//float tempControlMax = 80;
-//float difTempControl = (tempControlMax - tempControlMin) / 5;
 
 float minRpm = 0;
 float maxRpm = 2500;
@@ -90,6 +86,16 @@ int comprobarRpm = 0;
 float minTemp = 0;//celsius en infocolores
 float maxTemp = 80;
 float difTemp = (maxTemp - minTemp) / 5;
+
+float tempControladoraMin = minTemp;
+float tempControladoraMax = maxTemp;
+float diftempControladora = difTemp;
+float accionTempControl = tempControladoraMax;
+int comprobarTempControl = 0;
+//
+//float tempControlMin = 20;
+//float tempControlMax = 80;
+//float difTempControl = (tempControlMax - tempControlMin) / 5;
 
 float minTrabajo = 0;
 float maxTrabajo = 5000;
@@ -119,13 +125,13 @@ int refresco =0;
 
 float voltaje=0;
 float voltaje_inicial = 0;
-float minimoPorciento = 0;
+float minimoPorCiento = 0;
 
 
 float porciento=0;
 float consumo=0;
 float amperaje=0;
-float tempMotor= 0;
+float tempControladora= 0;
 float watios=0;
 String dir = "";
 int last_sec=0;
@@ -166,8 +172,14 @@ float accelZ = 0; // adelante atras?
 
 int sec_pasados = 0;
 
-float puntoMedio = 1.276;
-float salto = 0.008;
+float puntoMedio = 1276;
+float salto = 8;
+int alarma1 = 0;
+int alarma2 = 0;
+int alarma3 = 0;
+int alarma4 = 0;
+int alarma5 = 0;
+  
 
 
 void setup() {
@@ -181,13 +193,13 @@ void setup() {
   
   Wire1.begin(); // Inicia el puerto I2C
   rtc.begin();
-  //  rtc.adjust(DateTime(2016,05,23,10,58,05));
+  //rtc.adjust(DateTime(2016,05,4,9,48,00));
   // Para ajustar la hora y/m/d h/m/s
   
   voltaje=0;
   consumo=0;
   amperaje=0;
-  tempMotor= 0;
+  tempControladora= 0;
   watios=0;
   tft.print("SD:  ");
   if (SD.begin(10)) { 
@@ -272,6 +284,16 @@ void setup() {
   
   DateTime pasa = rtc.now();
   sec_pasados = pasa.unixtime();
+
+
+//Por problemas usamos el reloj interno para calcular la hora actual y el tiempo pasado
+  
+  rtc_clock.init();
+  rtc_clock.set_time(pasa.hour(), pasa.minute(), pasa.second());
+
+
+
+  
   //setup de posicion
   Wire.begin(); // Start the I2C interface.
   Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
@@ -409,7 +431,16 @@ void loop() {
   // Se imprimen las variables
    voltaje = analogRead(A0);
   voltaje = voltaje / 9.3; 
-  porciento = (voltaje / voltaje_inicial) * 100;
+  float dif_bateria = voltaje_inicial - minimoPorCiento;
+  porciento = (voltaje - minimoPorCiento) / (dif_bateria / 100);
+/*voltaje_inicial = 100 %
+ * minimoPorCiento = 0%
+ * 
+ * 
+ */
+
+
+  
   /*
   1023 -> 3.3
   x -> 3
@@ -428,8 +459,8 @@ void loop() {
  
   // Amperaje
   float amp2 = consumo ;
-  float puntoMedioValor = (1023 * puntoMedio)/3.3;//395.56
-  float maximoValor = (salto * 200) + puntoMedio;
+  float puntoMedioValor = (1023 * (puntoMedio/1000))/3.3;//395.56
+  float maximoValor = ((salto/1000)* 200) + (puntoMedio / 1000);
   maximoValor = (1023 * maximoValor)/3.3;
   float diferenciaValor = maximoValor - puntoMedioValor;//496
   if (puntoMedioValor > diferenciaValor){
@@ -486,8 +517,8 @@ minimoValor = ((puntoMedioValor * 200) / diferenciaValor)* -1;
   //Temp motor
   float temp = analogRead(A2);
   float volts = (temp / 1024.0) * 3.3;
-   tempMotor = (volts) * 100;
-   tempMotor += 1 ; 
+   tempControladora = (volts) * 100;
+   tempControladora += 1 ; 
 
 
 
@@ -495,7 +526,7 @@ minimoValor = ((puntoMedioValor * 200) / diferenciaValor)* -1;
   if (bMenu == HIGH && menu == 0) {
       difVoltaje = (maxVoltaje - minVoltaje) / 5;
       difAmperios = (maxAmperios - minAmperios) / 5;
-      difTempMotor = (tempMotorMax - tempMotorMin) / 5;
+      diftempControladora = (tempControladoraMax - tempControladoraMin) / 5;
 //      difTempControl = (tempControlMax - tempControlMin) / 5;
       difRpm = (maxRpm - minRpm) / 5;
       difTemp = (maxTemp - minTemp) / 5;
@@ -544,7 +575,7 @@ minimoValor = ((puntoMedioValor * 200) / diferenciaValor)* -1;
         configuracion(bCampo, bMenos, bMas, bVuelta);
      } else if (menu == 1) {
         pantallaGeneral();      
-        //hora();
+        hora();
      } else if (menu == 2) {
         infoColores();
         //subMenu1(voltaje, amperaje, rpm, watios);
@@ -792,7 +823,7 @@ void pintarWarning (int cx, int cy, int longitud,  int color) {
         telemetria = telemetria + "&rpm;";
         telemetria = telemetria + revs;
         telemetria = telemetria + "&temp;";
-        telemetria = telemetria + tempMotor;
+        telemetria = telemetria + tempControladora;
 
         File dataFileVoltaje = SD.open(directorio + "tel.txt" , FILE_WRITE);
         dataFileVoltaje.println(telemetria);
@@ -812,11 +843,9 @@ void nuevoDir() {
  minAmperios = getValor("min_a");
  maxAmperios = getValor("max_a");
 
- tempMotorMin = getValor("min_t");
- tempMotorMax = getValor("max_t");
-
-// tempControlMin = getValor("min_t");
-// tempControlMax = getValor("max_t");
+salto = getValor("saltos");
+puntoMedio = getValor("p_medio");
+minimoPorCiento = getValor("min_bat");
 
  minRpm = getValor("min_r");
  maxRpm = getValor("max_r");
@@ -846,7 +875,7 @@ Serial.print(amperaje);
 Serial.print("wats");
 Serial.print(watios);
 Serial.print("tempCtrl");
-Serial.print(tempMotor);
+Serial.print(tempControladora);
 Serial.print("rpm");
 Serial.print(revs);
 Serial.print("tempAmb");
@@ -863,6 +892,20 @@ Serial.print("accY");
 Serial.print(accelY);
 Serial.print("accZ");
 Serial.print(accelZ);
+Serial.print("altura");
+Serial.print(Altura);
+Serial.print("porcent");
+Serial.print(porciento);
+Serial.print("a1");
+Serial.print(alarma1);
+Serial.print("a2");
+Serial.print(alarma2);
+Serial.print("a3");
+Serial.print(alarma3);
+Serial.print("a4");
+Serial.print(alarma4);
+Serial.print("a5");
+Serial.print(alarma5);
 Serial.print("fin");
 
 
@@ -1035,23 +1078,38 @@ void setValor(String campoEnviado, int valor){
 void comprobar (){
      if (voltaje < accionVoltaje && comprobarVoltaje != 0) {
         analogWrite(A3, 1023);
+        alarma1 = 1;
      } else {        
         analogWrite(A3, 0);
+        alarma1 = 0;
      }
-     if (rpm < accionRpm && comprobarRpm != 0) {
+     if (revs < accionRpm && comprobarRpm != 0) {
         analogWrite(A4, 1023);
+        alarma2 = 1;
      } else {        
         analogWrite(A4, 0);
+        alarma2 = 0;
      }
      if (amperaje < accionAmperios && comprobarAmperios != 0) {
         analogWrite(A5, 1023);
+        alarma3 = 1;
      } else {        
         analogWrite(A5, 0);
+        alarma3 = 0;
      }
-     if (tempMotor < accionTempControl && comprobarTempControl != 0) {
+     if (tempControladora < accionTempControl && comprobarTempControl != 0) {
         analogWrite(A6, 1023);
+        alarma4 = 1;
      } else {        
         analogWrite(A6, 0);
+        alarma4 = 0;
+     }
+     if (watios < accionTrabajo && comprobarTrabajo != 0) {
+        analogWrite(A6, 1023);
+        alarma5 = 1;
+     } else {        
+        analogWrite(A6, 0);
+        alarma5 = 0;
      }
 }
 
@@ -1276,8 +1334,8 @@ void infoColores() {
   
   //TEMPERATURA MOTOR
   tft.drawRect(410,240,69,80, TFT_BLACK);
-  tft.fillRect(411,241,67,78,getColorInvertido(tempMotor, difTemp, minTemp, maxTemp));
-  tft.setTextColor(TFT_BLACK, getColorInvertido(tempMotor, difTemp, minTemp, maxTemp));
+  tft.fillRect(411,241,67,78,getColorInvertido(tempControladora, difTemp, minTemp, maxTemp));
+  tft.setTextColor(TFT_BLACK, getColorInvertido(tempControladora, difTemp, minTemp, maxTemp));
   tft.setCursor(430, 270);
   tft.setTextSize(2);
   tft.print("C");
@@ -1285,7 +1343,7 @@ void infoColores() {
 
 
 void pantallaGeneral() {
-  
+  //rtc.adjust(DateTime(2016,05,4,9,51,00));
   limpiar();
   // Rectangulos
   tft.drawRect(0,15,220,50,TFT_RED);
@@ -1314,7 +1372,7 @@ void pantallaGeneral() {
   tft.fillRect(405,16,49,48,getColorInvertido(rpm, difRpm, minRpm, maxRpm));
   
   //TEMPERATURA MOTOR
-  tft.fillRect(405,76,49,48,getColorInvertido(tempMotor, difTemp, minTemp, maxTemp));
+  tft.fillRect(405,76,49,48,getColorInvertido(tempControladora, difTemp, minTemp, maxTemp));
 
 
   tft.setCursor(240, 20);
@@ -1389,10 +1447,10 @@ void pantallaGeneral() {
     
   tft.setTextSize(2);
   tft.setCursor(240, 80);
-  tft.println("T. Motor: ");
+  tft.println("T. Controladora: ");
   tft.setCursor(240, 100);
   tft.setTextSize(3);
-  tft.print(tempMotor, 1);
+  tft.print(tempControladora, 1);
   tft.println(" C\t  ");
 
 }
@@ -1430,10 +1488,13 @@ void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
           tft.fillCircle(243, 185, 5,TFT_GREEN);
           break;
         case 9: 
-          tft.fillCircle(50, 235, 5,TFT_GREEN);
+          tft.fillCircle(5, 235, 5,TFT_GREEN);
           break;
         case 10: 
-          tft.fillCircle(240, 235, 5,TFT_GREEN);
+          tft.fillCircle(105, 235, 5,TFT_GREEN);
+          break;  
+        case 11: 
+          tft.fillCircle(285, 235, 5,TFT_GREEN);
           break;  
         case 12: 
           tft.fillCircle(50, 285, 5,TFT_GREEN);
@@ -1453,7 +1514,7 @@ void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
       }      
     }
     if (bCampo == HIGH) {
-      if (cursorConfig == 10){
+      if (cursorConfig == 13){
         cursorConfig = 0;
       } else {
         cursorConfig++;
@@ -1509,16 +1570,19 @@ void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
           tft.fillCircle(243, 185, 5,TFT_GREEN);
           break;
         case 9: 
-          salto = compBotonPulsado(bMenos, salto, multiplicador); 
-          tft.fillCircle(50, 235, 5,TFT_GREEN);
+          salto = compBotonPulsado(bMenos, salto, multiplicador); //saltos:8&p_medio:1276&min_bat:50&
+          setValor("saltos", salto);
+          tft.fillCircle(5, 235, 5,TFT_GREEN);
           break;
         case 10: 
           puntoMedio = compBotonPulsado(bMenos, puntoMedio, multiplicador); 
-          tft.fillCircle(150, 235, 5,TFT_GREEN);
+          setValor("p_medio", puntoMedio);
+          tft.fillCircle(105, 235, 5,TFT_GREEN);
           break;
         case 11: 
-          minimoPorciento = compBotonPulsado(bMenos, minimoPorciento, multiplicador); 
-          tft.fillCircle(250, 235, 5,TFT_GREEN);
+          minimoPorCiento = compBotonPulsado(bMenos, minimoPorCiento, multiplicador); 
+          setValor("min_bat", minimoPorCiento);
+          tft.fillCircle(285, 235, 5,TFT_GREEN);
           break;
         case 12: 
           minTrabajo = compBotonPulsado(bMenos, minTrabajo, multiplicador); 
@@ -1596,18 +1660,25 @@ void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
   tft.print("Max: ");
   tft.println(maxRpm);
 
-/*
-  tft.setCursor(40, 210);
-  tft.println("Temp. Control: Celsius");
+  tft.setCursor(13, 210);
+  tft.println("Salto y p. medio en mv:");
 
-  tft.setCursor(60, 230);
-  tft.print("Min: ");
-  tft.println(tempControlMin);
+  tft.setCursor(15, 230);
+  tft.print("S: ");
+  tft.println(salto,0);
+  
 
-  tft.setCursor(250, 230);
-  tft.print("Max: ");
-  tft.println(tempControlMax);
-*/
+  tft.setCursor(115, 230);
+  tft.print("Pmid:");
+  tft.println(puntoMedio,0);
+
+  tft.setCursor(290, 210);
+  tft.println("Bateria:");
+  
+  tft.setCursor(295, 230);
+  tft.print("Min%: ");
+  tft.println(minimoPorCiento,0);
+
 
   tft.setCursor(40, 260);
   tft.println("Trabajo: W");
@@ -1622,25 +1693,13 @@ void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
 }
 
 void hora(){
-  
-
-  DateTime hora_actual = rtc.now();
-  int sec_actual = hora_actual.unixtime();
-  DateTime pasado = (sec_actual - sec_pasados) + (3600 * 17) + (60 * 31)+44;//xq seg 0 empieza a 6:28:16
-
-
-
-  
-
-
 
   
   tft.drawRect(0,195,220,50,TFT_RED);
   
-  DateTime tiempo_vuelo = rtc.now();
-
-  
   tft.drawRect(0,255,220,70,TFT_RED);
+
+  DateTime tiempo_vuelo = 1230768000 + (millis()/1000);//calculo de tiempo pasado
   
   tft.setTextSize(2);
   
@@ -1648,56 +1707,63 @@ void hora(){
   tft.println("Tiempo de Vuelo: ");
   tft.setCursor(10, 260);  
   tft.println("Hora actual:");
+
+
+
   
+  /*=========================================================================================
+                    HORA ACTUAL
+    =========================================================================================*/
   tft.setCursor(30, 280);
   
   tft.setTextSize(3);
 
-  if (hora_actual.hour() < 10) {
+  if (rtc_clock.get_hours() < 10) {
     tft.print("0");
   }
-  tft.print(hora_actual.hour());
+  tft.print(rtc_clock.get_hours());
   
   tft.print(":");
   
-  if (hora_actual.minute() < 10) {
+  if (rtc_clock.get_minutes() < 10) {
     tft.print("0");
   }
-  tft.print(hora_actual.minute());
+  tft.print(rtc_clock.get_minutes());
   
   tft.print(":");
   
-  if (hora_actual.second() < 10) {
+  if (rtc_clock.get_seconds() < 10) {
     tft.print("0");
   }
-  tft.print(hora_actual.second());
-
-  
-  tft.setCursor(30, 220);
-
-  
-  //Serial.print(sec_actual - sec_pasados);
-
-  if (pasado.hour() < 10) {
-    tft.print("0");
-  }
-  tft.print(pasado.hour());
-  
-  tft.print(":");
-  
-  if (pasado.minute() < 10) {
-    tft.print("0");
-  }
-  tft.print(pasado.minute());
-  
-  tft.print(":");
-  
-  if (pasado.second() < 10) {
-    tft.print("0");
-  }
-  tft.print(pasado.second());
+  tft.print(rtc_clock.get_seconds());
   
   tft.setCursor(0, 0);
+
+  
+  
+  /*=========================================================================================
+                    TIEMPO PASADO
+    =========================================================================================*/
+  tft.setCursor(30, 220);
+  if (tiempo_vuelo.hour() < 10) {
+    tft.print("0");
+  }
+  tft.print(tiempo_vuelo.hour());
+  
+  tft.print(":");
+  
+  if (tiempo_vuelo.minute() < 10) {
+    tft.print("0");
+  }
+  tft.print(tiempo_vuelo.minute());
+  
+  tft.print(":");
+  
+  if (tiempo_vuelo.second() < 10) {
+    tft.print("0");
+  }
+  tft.print(tiempo_vuelo.second());
+
 }
 
 
