@@ -180,67 +180,51 @@ int alarma3 = 0;
 int alarma4 = 0;
 int alarma5 = 0;
   
-
+String telemetria = "";
+boolean tel_ok = false;
 
 void setup() {
 
+  /*=========================================================================
+                                Iniciamos la pantalla, 
+   =========================================================================*/
   tft.begin();
   tft.fillScreen(TFT_WHITE);
   tft.setRotation(1);
   tft.setTextSize(2);
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
+  
+  /*=========================================================================
+                                Iniciamos el barometro, altitud y temperatura 
+   =========================================================================*/
   SensorStart();
   
+  /*=========================================================================
+                                Iniciamos el reloj externo por wire1 
+   =========================================================================*/
   Wire1.begin(); // Inicia el puerto I2C
   rtc.begin();
   //rtc.adjust(DateTime(2016,05,4,9,48,00));
   // Para ajustar la hora y/m/d h/m/s
   
+  /*=========================================================================
+                                Inicializamos las variables que vamos a usar 
+   =========================================================================*/
   voltaje=0;
   consumo=0;
   amperaje=0;
   tempControladora= 0;
   watios=0;
+
+
+  /*=========================================================================
+                   Inicializamos la tarjeta sd,
+                   creamos un directorio nuevo 
+                   y leemos los datos de configuracion de la sd
+   =========================================================================*/
+  
   tft.print("SD:  ");
   if (SD.begin(10)) { 
-  tft.print(" detectada. ");
-         
-    tft.println(" Leyendo archivos");
-    File dir_telemetria = SD.open("dir.txt");
-    String fraseCompleta = "";
-    while (dir_telemetria.available()) {
-      char letra = dir_telemetria.read();
-      fraseCompleta += letra;
-    } 
-    int inicio = fraseCompleta.lastIndexOf("=");
-    String valor =   fraseCompleta.substring(inicio+1);
-    dir_telemetria.close();
-
-    
-    tft.print("Sacando valor ... ");
-    int num = valor.toInt();
-    num++;
-    dir_telemetria = SD.open("dir.txt", FILE_WRITE);
-    dir_telemetria.print("=");
-    dir_telemetria.println(num);
-    dir_telemetria.close();
-    tft.println(num);
-    
-    tft.println("Creando directorio");
-    directorio = "dir";
-    directorio += num;
-
-
-    
-
-
-
-    
-    SD.mkdir(directorio);
-    directorio += "/";
-    tft.print(directorio);  
-    tft.println(" creado");
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
 
      
     nuevoDir();
@@ -258,6 +242,10 @@ void setup() {
 
   
   
+  /*=========================================================================
+                   Configuramos los pines como output para alertas 
+                   o los demas como input, sensores o botones
+   =========================================================================*/
   // Se inicia el sensor y se hace una lectura inicial
   pinMode(A1, INPUT);
   pinMode(A0, INPUT);
@@ -286,7 +274,10 @@ void setup() {
   sec_pasados = pasa.unixtime();
 
 
-//Por problemas usamos el reloj interno para calcular la hora actual y el tiempo pasado
+  /*=========================================================================
+                   Por problemas usamos el reloj interno
+                   para calcular la hora actual y el tiempo pasado
+   =========================================================================*/
   
   rtc_clock.init();
   rtc_clock.set_time(pasa.hour(), pasa.minute(), pasa.second());
@@ -294,6 +285,9 @@ void setup() {
 
 
   
+  /*=========================================================================
+                   Configuracion de posicion a traves de wire
+   =========================================================================*/
   //setup de posicion
   Wire.begin(); // Start the I2C interface.
   Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
@@ -346,6 +340,9 @@ void setup() {
     }
     delay(4000);
     
+  /*=========================================================================
+                   Fin del setup, pintamos la pantalla y entramos en loop
+   =========================================================================*/
   tft.fillScreen(TFT_WHITE);
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
 }
@@ -353,72 +350,7 @@ void setup() {
 void loop() {
 
 
-  
-  /*=========================================================================
-                                INICIO DE CALCULO DE POSICION
-   =========================================================================*/
-
-
-
-    // reset interrupt flag and get INT_STATUS byte
-    mpuInterrupt = false;
-    mpuIntStatus = mpu.getIntStatus();
-
-    // get current FIFO count
-    fifoCount = mpu.getFIFOCount();
-
-    // check for overflow (this should never happen unless our code is too inefficient)
-    
-    if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
-        // reset so we can continue cleanly
-        mpu.resetFIFO();
-        //Serial.println(F("FIFO overflow!"));
-
-    // otherwise, check for DMP data ready interrupt (this should happen frequently)
-    } else if (mpuIntStatus & 0x02) {
-        // wait for correct available data length, should be a VERY short wait
-        while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
-
-        // read a packet from FIFO
-        mpu.getFIFOBytes(fifoBuffer, packetSize);
-        
-        // track FIFO count here in case there is > 1 packet available
-        // (this lets us immediately read more without waiting for an interrupt)
-        fifoCount -= packetSize;
-
-        mpu.dmpGetQuaternion(&q, fifoBuffer);
-        mpu.dmpGetGravity(&gravity, &q);
-        mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-        anguloZ = ypr[0] * 180/M_PI;
-        if (anguloZ <0) {
-          anguloZ = 360 + anguloZ; 
-        }
-        anguloX = ypr[1] * 180/M_PI;
-        if (anguloX <0) {
-          anguloX = 360 + anguloX; 
-        }
-        anguloY = ypr[2] * 180/M_PI;
-        if (anguloY <0) {
-          anguloY = 360 + anguloY; 
-        }
-
-        
-        mpu.dmpGetAccel(&aa, fifoBuffer);
-        mpu.dmpGetGravity(&gravity, &q);
-        mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
-        accelX = aaReal.x;
-        accelX = accelX / 8192;
-        accelY = aaReal.y;
-        accelY = accelY / 8192;
-        accelZ = aaReal.z;
-        accelZ = accelZ / 8192;
-
-    }
-
-    
-  /*=========================================================================
-                                FIN DE CALCULO DE POSICION
-   =========================================================================*/
+  calculoPosicion();
 
   // Se hace lectura del sensor, altura y temperatura ambiente
   ReadSensor();
@@ -568,7 +500,7 @@ minimoValor = ((puntoMedioValor * 200) / diferenciaValor)* -1;
       pintarTelemetria();
     }
   */
-     
+     pintarTelemetria();
      
      if (menu == 0) {
         infoColores();
@@ -590,6 +522,75 @@ minimoValor = ((puntoMedioValor * 200) / diferenciaValor)* -1;
     comprobar();
 }
 
+void calculoPosicion(){
+  
+  /*=========================================================================
+                                INICIO DE CALCULO DE POSICION
+   =========================================================================*/
+
+
+
+    // reset interrupt flag and get INT_STATUS byte
+    mpuInterrupt = false;
+    mpuIntStatus = mpu.getIntStatus();
+
+    // get current FIFO count
+    fifoCount = mpu.getFIFOCount();
+
+    // check for overflow (this should never happen unless our code is too inefficient)
+    
+    if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
+        // reset so we can continue cleanly
+        mpu.resetFIFO();
+        //Serial.println(F("FIFO overflow!"));
+
+    // otherwise, check for DMP data ready interrupt (this should happen frequently)
+    } else if (mpuIntStatus & 0x02) {
+        // wait for correct available data length, should be a VERY short wait
+        while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
+
+        // read a packet from FIFO
+        mpu.getFIFOBytes(fifoBuffer, packetSize);
+        
+        // track FIFO count here in case there is > 1 packet available
+        // (this lets us immediately read more without waiting for an interrupt)
+        fifoCount -= packetSize;
+
+        mpu.dmpGetQuaternion(&q, fifoBuffer);
+        mpu.dmpGetGravity(&gravity, &q);
+        mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+        anguloZ = ypr[0] * 180/M_PI;
+        if (anguloZ <0) {
+          anguloZ = 360 + anguloZ; 
+        }
+        anguloX = ypr[1] * 180/M_PI;
+        if (anguloX <0) {
+          anguloX = 360 + anguloX; 
+        }
+        anguloY = ypr[2] * 180/M_PI;
+        if (anguloY <0) {
+          anguloY = 360 + anguloY; 
+        }
+
+        
+        mpu.dmpGetAccel(&aa, fifoBuffer);
+        mpu.dmpGetGravity(&gravity, &q);
+        mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
+        accelX = aaReal.x;
+        accelX = accelX / 8192;
+        accelY = aaReal.y;
+        accelY = accelY / 8192;
+        accelZ = aaReal.z;
+        accelZ = accelZ / 8192;
+
+    }
+
+    
+  /*=========================================================================
+                                FIN DE CALCULO DE POSICION
+   =========================================================================*/
+}
+
 void rpm_fan(){ /* this code will be executed every time the interrupt 0 (pin2) gets low.*/
   
   rpmcount++;
@@ -606,7 +607,6 @@ void rpm_fan(){ /* this code will be executed every time the interrupt 0 (pin2) 
        
        last_sec = now.second(); // Uptade lasmillis
        attachInterrupt(18, rpm_fan, FALLING); //enable interrupt
-       //pintarTelemetria();
   }
 }
 
@@ -615,7 +615,12 @@ void limpiar(){
     tft.fillScreen(TFT_WHITE);
     refresco = 0;
   }
+  if (sec >= 200) {
+    tel_ok = true;
+    sec=0;    
+  }
   refresco++;
+  sec++;
 }
 
 void subMenu2 (float rpm, float watios) {
@@ -807,12 +812,6 @@ void pintarWarning (int cx, int cy, int longitud,  int color) {
 
  void pintarTelemetria(){ 
   
-        String telemetria = "";
-        sec++;
-        if (sec == 60) {
-          sec = 0;
-        //Evalor;valor2F
-        }
         telemetria = telemetria +  millis();
         telemetria = telemetria + "&voltaje;";
         telemetria = telemetria + voltaje;
@@ -822,16 +821,70 @@ void pintarWarning (int cx, int cy, int longitud,  int color) {
         telemetria = telemetria +(voltaje * amperaje);
         telemetria = telemetria + "&rpm;";
         telemetria = telemetria + revs;
-        telemetria = telemetria + "&temp;";
+        telemetria = telemetria + "&tempControladora;";
         telemetria = telemetria + tempControladora;
-
+        telemetria = telemetria + "&tempAmbiente;";
+        telemetria = telemetria + Temperatura;
+        telemetria = telemetria + "&tempMotor;";
+        telemetria = telemetria + tempControladora;
+        telemetria = telemetria + "&altura;";
+        telemetria = telemetria + Altura;
+        telemetria = telemetria + "&bateria;";
+        telemetria = telemetria + porciento;
+        telemetria = telemetria + "\n";
+        if (tel_ok == true) {
+          File dataFileVoltaje = SD.open(directorio + "tel.txt" , FILE_WRITE);
+          dataFileVoltaje.print(telemetria);
+          dataFileVoltaje.close();
+          telemetria = "";
+          tel_ok = false;
+        }
+/*
         File dataFileVoltaje = SD.open(directorio + "tel.txt" , FILE_WRITE);
         dataFileVoltaje.println(telemetria);
         dataFileVoltaje.close();
-
+*/
 }
   
 void nuevoDir() {
+    tft.print(" detectada. ");
+         
+    tft.println(" Leyendo archivos");
+    File dir_telemetria = SD.open("dir.txt");
+    String fraseCompleta = "";
+    while (dir_telemetria.available()) {
+      char letra = dir_telemetria.read();
+      fraseCompleta += letra;
+    } 
+    int inicio = fraseCompleta.lastIndexOf("=");
+    String valor =   fraseCompleta.substring(inicio+1);
+    dir_telemetria.close();
+
+    
+    tft.print("Sacando valor ... ");
+    int num = valor.toInt();
+    num++;
+    dir_telemetria = SD.open("dir.txt", FILE_WRITE);
+    dir_telemetria.print("=");
+    dir_telemetria.println(num);
+    dir_telemetria.close();
+    tft.println(num);
+    
+    tft.println("Creando directorio");
+    directorio = "dir";
+    directorio += num;
+
+
+    
+
+
+
+    
+    SD.mkdir(directorio);
+    directorio += "/";
+    tft.print(directorio);  
+    tft.println(" creado");
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
 
      tft.setTextColor(TFT_GREEN, TFT_BLACK);
      tft.println("OK");
