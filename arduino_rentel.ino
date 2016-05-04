@@ -14,7 +14,6 @@
 //reloj externo
 #include "RTClib1.h"
 RTC_DS1307 rtc;
-RTC_Millis rtced;
 
 //tarjeta sd
 #include <SD.h>
@@ -182,6 +181,8 @@ void setup() {
   
   Wire1.begin(); // Inicia el puerto I2C
   rtc.begin();
+  //  rtc.adjust(DateTime(2016,05,23,10,58,05));
+  // Para ajustar la hora y/m/d h/m/s
   
   voltaje=0;
   consumo=0;
@@ -431,9 +432,13 @@ void loop() {
   float maximoValor = (salto * 200) + puntoMedio;
   maximoValor = (1023 * maximoValor)/3.3;
   float diferenciaValor = maximoValor - puntoMedioValor;//496
-  float minimoValor = ((puntoMedioValor * 200) / diferenciaValor)* -1;
-  float amperaje= map(amp2, 0, maximoValor , minimoValor, 200);
-
+  if (puntoMedioValor > diferenciaValor){
+    float minimoValor = -200;
+    amperaje = map(amp2, puntoMedioValor - diferenciaValor, maximoValor , minimoValor, 200);
+  } else {
+    float minimoValor = ((puntoMedioValor * 200) / diferenciaValor)* -1;
+    amperaje = map(amp2, 0, maximoValor , minimoValor, 200);
+  }
 
 
 /*
@@ -539,7 +544,7 @@ minimoValor = ((puntoMedioValor * 200) / diferenciaValor)* -1;
         configuracion(bCampo, bMenos, bMas, bVuelta);
      } else if (menu == 1) {
         pantallaGeneral();      
-        hora();
+        //hora();
      } else if (menu == 2) {
         infoColores();
         //subMenu1(voltaje, amperaje, rpm, watios);
@@ -570,7 +575,7 @@ void rpm_fan(){ /* this code will be executed every time the interrupt 0 (pin2) 
        
        last_sec = now.second(); // Uptade lasmillis
        attachInterrupt(18, rpm_fan, FALLING); //enable interrupt
-       pintarTelemetria();
+       //pintarTelemetria();
   }
 }
 
