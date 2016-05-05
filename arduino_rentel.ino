@@ -29,6 +29,7 @@ RTC_DS1307 rtc;
 //pantalla
 #include <TFT_HX8357_Due.h> // PARA DUE
 
+#include "Logo.h"
 
 
 
@@ -65,43 +66,36 @@ double Temperatura = 0;
 char status;
 
 // Variables Globales
-float minVoltaje = 0;
-float maxVoltaje = 100;
-float difVoltaje = (maxVoltaje - minVoltaje) / 5;
-float accionVoltaje = minVoltaje;
+double minVoltaje = 0;
+double maxVoltaje = 100;
+double difVoltaje = (maxVoltaje - minVoltaje) / 5;
+double accionVoltaje = minVoltaje;
 int comprobarVoltaje = 0;
 
-float minAmperios = 0;
-float maxAmperios = 100;
-float difAmperios = (maxAmperios - minAmperios) / 5;
-float accionAmperios = maxAmperios;
+double minAmperios = 0;
+double maxAmperios = 100;
+double difAmperios = (maxAmperios - minAmperios) / 5;
+double accionAmperios = maxAmperios;
 int comprobarAmperios = 0;
 
 
-float minRpm = 0;
-float maxRpm = 2500;
-float difRpm = (maxRpm - minRpm) / 5;
-float accionRpm = maxRpm;
+double minRpm = 0;
+double maxRpm = 2500;
+double difRpm = (maxRpm - minRpm) / 5;
+double accionRpm = maxRpm;
 int comprobarRpm = 0;
 
-float minTemp = 0;//celsius en infocolores
-float maxTemp = 80;
-float difTemp = (maxTemp - minTemp) / 5;
 
-float tempControladoraMin = minTemp;
-float tempControladoraMax = maxTemp;
-float diftempControladora = difTemp;
-float accionTempControl = tempControladoraMax;
+double minTemp;
+double maxTemp;
+double difTemp;
+double accionTempControl = maxTemp;
 int comprobarTempControl = 0;
-//
-//float tempControlMin = 20;
-//float tempControlMax = 80;
-//float difTempControl = (tempControlMax - tempControlMin) / 5;
 
-float minTrabajo = 0;
-float maxTrabajo = 5000;
-float difTrabajo = (maxTrabajo - minTrabajo) / 5;
-float accionTrabajo = maxTrabajo;
+double minTrabajo = 0;
+double maxTrabajo = 5000;
+double difTrabajo = (maxTrabajo - minTrabajo) / 5;
+double accionTrabajo = maxTrabajo;
 int comprobarTrabajo = 0;
 
 
@@ -119,21 +113,22 @@ int campo= 0;
 String directorio="";
 String dir_actual = "";
 int num_actual= 0;
-float last_trabajo= 0;
-float last_rpm= 0;
+double last_trabajo= 0;
+double last_rpm= 0;
 int refresco =0;
 
 
-float voltaje=0;
-float voltaje_inicial = 0;
-float minimoPorCiento = 0;
+double voltaje=0;
+double voltaje_inicial = 0;
+double minimoPorCiento = 0;
 
 
-float porciento=0;
-float consumo=0;
-float amperaje=0;
-float tempControladora= 0;
-float watios=0;
+double porciento=0;
+double consumo=0;
+double amperaje=0;
+double tempControladora= 0;
+double tempMotor =0;
+double watios=0;
 String dir = "";
 int last_sec=0;
 File dataFile;
@@ -163,23 +158,23 @@ void dmpDataReady() {
 }
 
 
-float anguloX = 0;//pitch
-float accionAnguloX = 70;
-float comprobarPitch= 0;
-float anguloY = 0;//roll
-float accionAnguloY = 70;
-float comprobarRoll= 0;
-float anguloZ = 0;//yaw
+double anguloX = 0;//pitch
+double accionAnguloX = 70;
+double comprobarPitch= 0;
+double anguloY = 0;//roll
+double accionAnguloY = 70;
+double comprobarRoll= 0;
+double anguloZ = 0;//yaw
 
 
-float accelX = 0; // arriba abajo
-float accelY = 0; // izquierda derecha
-float accelZ = 0; // adelante atras?
+double accelX = 0; // arriba abajo
+double accelY = 0; // izquierda derecha
+double accelZ = 0; // adelante atras?
 
 int sec_pasados = 0;
 
-float puntoMedio = 1276;
-float salto = 8;
+double puntoMedio = 1276;
+double salto = 8;
 int alarma1 = 0;
 int alarma2 = 0;
 int alarma3 = 0;
@@ -201,14 +196,25 @@ void setup() {
   tft.setRotation(1);
   tft.setTextSize(2);
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
-  
   /*=========================================================================
-                                Iniciamos el barometro, altitud y temperatura 
+                                Animacion de inicio 
+   =========================================================================*/
+
+   for (int i=0; i < 500 ; i++) {
+    int cx = 400- (i/10);
+    int cy = 280- (i/10);
+      tft.drawCircle(cx,cy,545-i, TFT_BLUE);
+      delay(5);
+      if ((550 - i) == 99) {drawIcon(logo, 304, 183, logoWidth, logoHeight); }
+   }  
+   
+  /*=========================================================================
+                Iniciamos el barometro, altitud y temperatura 
    =========================================================================*/
   SensorStart();
   
   /*=========================================================================
-                                Iniciamos el reloj externo por wire1 
+                      Iniciamos el reloj externo por wire1 
    =========================================================================*/
   Wire1.begin(); // Inicia el puerto I2C
   rtc.begin();
@@ -216,7 +222,7 @@ void setup() {
   // Para ajustar la hora y/m/d h/m/s
   
   /*=========================================================================
-                                Inicializamos las variables que vamos a usar 
+                   Inicializamos las variables que vamos a usar 
    =========================================================================*/
   voltaje=0;
   consumo=0;
@@ -265,6 +271,8 @@ void setup() {
   pinMode(A5, OUTPUT);
   pinMode(A6, OUTPUT);
   pinMode(A7, OUTPUT);
+  pinMode(A8, OUTPUT);
+  pinMode(A9, OUTPUT);
   
   // Botones
   pinMode(2,INPUT);
@@ -426,7 +434,7 @@ void loop() {
   // Se imprimen las variables
    voltaje = analogRead(A0);
   voltaje = voltaje / 9.3; 
-  float dif_bateria = voltaje_inicial - minimoPorCiento;
+  double dif_bateria = voltaje_inicial - minimoPorCiento;
   porciento = (voltaje - minimoPorCiento) / (dif_bateria / 100);
 /*voltaje_inicial = 100 %
  * minimoPorCiento = 0%
@@ -453,22 +461,22 @@ void loop() {
    */
  
   // Amperaje
-  float amp2 = consumo ;
-  float puntoMedioValor = (1023 * (puntoMedio/1000))/3.3;//395.56
-  float maximoValor = ((salto/1000)* 200) + (puntoMedio / 1000);
+  double amp2 = consumo ;
+  double puntoMedioValor = (1023 * (puntoMedio/1000))/3.3;//395.56
+  double maximoValor = ((salto/1000)* 200) + (puntoMedio / 1000);
   maximoValor = (1023 * maximoValor)/3.3;
-  float diferenciaValor = maximoValor - puntoMedioValor;//496
+  double diferenciaValor = maximoValor - puntoMedioValor;//496
   if (puntoMedioValor > diferenciaValor){
-    float minimoValor = -200;
+    double minimoValor = -200;
     amperaje = map(amp2, puntoMedioValor - diferenciaValor, maximoValor , minimoValor, 200);
   } else {
-    float minimoValor = ((puntoMedioValor * 200) / diferenciaValor)* -1;
+    double minimoValor = ((puntoMedioValor * 200) / diferenciaValor)* -1;
     amperaje = map(amp2, 0, maximoValor , minimoValor, 200);
   }
 
 
 /*
-  float amperaje2= map(amp2, 0, 892 , -159, 200);//697.5
+  double amperaje2= map(amp2, 0, 892 , -159, 200);//697.5
    amperaje=amperaje2 ;
   
   1023 -> 3.3
@@ -493,7 +501,7 @@ maximoValor = (1023 * maximoValor)/3.3;
 diferenciaValor = maximoValor - puntoMedioValor;496
 minimoValor = ((puntoMedioValor * 200) / diferenciaValor)* -1;
 
- float amperaje2= map(amp2, 0, maximoValor , minimoValor, 200);
+ double amperaje2= map(amp2, 0, maximoValor , minimoValor, 200);
 
 
   
@@ -509,11 +517,14 @@ minimoValor = ((puntoMedioValor * 200) / diferenciaValor)* -1;
   395.56 == 0 Amp
   */
    watios = voltaje * amperaje;
-  //Temp motor
-  float temp = analogRead(A2);
-  float volts = (temp / 1024.0) * 3.3;
+  //Temp Controladora
+  double temp = analogRead(A2);
+  double volts = (temp / 1024.0) * 3.3;
    tempControladora = (volts) * 100;
    tempControladora += 1 ; 
+
+   
+   tempMotor = tempControladora;//Cambiar en el futuro cuando se añada el sensor del motor
 
 
 
@@ -521,7 +532,7 @@ minimoValor = ((puntoMedioValor * 200) / diferenciaValor)* -1;
   if (bMenu == HIGH && menu == 0) {
       difVoltaje = (maxVoltaje - minVoltaje) / 5;
       difAmperios = (maxAmperios - minAmperios) / 5;
-      diftempControladora = (tempControladoraMax - tempControladoraMin) / 5;
+      difTemp = (maxTemp - minTemp) / 5;
 //      difTempControl = (tempControlMax - tempControlMin) / 5;
       difRpm = (maxRpm - minRpm) / 5;
       difTemp = (maxTemp - minTemp) / 5;
@@ -618,7 +629,7 @@ void limpiar(){
   sec++;
 }
 
-void subMenu2 (float rpm, float watios) {
+void subMenu2 (double rpm, double watios) {
   limpiar();
   
   tft.setCursor(10,10);
@@ -680,7 +691,7 @@ void subMenu2 (float rpm, float watios) {
     
     pintarPunto(250,150,110,60,TFT_YELLOW);
     
-    float trozo = (maxTrabajo - minTrabajo)/6;
+    double trozo = (maxTrabajo - minTrabajo)/6;
     tft.setCursor(110,90);
     tft.println(((maxTrabajo - minTrabajo)/6)* 1);
     tft.setCursor(150,40);
@@ -751,10 +762,10 @@ void subMenu2 (float rpm, float watios) {
     tft.println(trozo * 5);
 }
 
-void pintarPunto (int cx, int cy, int longitud, float campo, int color) {
-    float valor = 0;
-    float x =0;
-    float y =0;
+void pintarPunto (int cx, int cy, int longitud, double campo, int color) {
+    double valor = 0;
+    double x =0;
+    double y =0;
 
          
      valor = map(campo,0,120,0,100);
@@ -763,9 +774,9 @@ void pintarPunto (int cx, int cy, int longitud, float campo, int color) {
     tft.drawLine(cx - 0.85*x,cy - 0.85*y,cx -x,cy-y,color);  
 }
 void pintarWarning (int cx, int cy, int longitud,  int color) {
-    float valor = 0;
-    float x =0;
-    float y =0;
+    double valor = 0;
+    double x =0;
+    double y =0;
 
          
      valor = map(120,0,120,0,100);
@@ -779,10 +790,10 @@ void pintarWarning (int cx, int cy, int longitud,  int color) {
 
 
 
-  void pintar (int cx, int cy, int longitud,int res ,float campo, int color) {
-    float valor = 0;
-    float x =0;
-    float y =0;
+  void pintar (int cx, int cy, int longitud,int res ,double campo, int color) {
+    double valor = 0;
+    double x =0;
+    double y =0;
 
      valor = map(campo,0,res,0,100);
      x= cos(valor/100 * PI)*longitud;
@@ -834,11 +845,6 @@ void pintarWarning (int cx, int cy, int longitud,  int color) {
           telemetria = "";
           tel_ok = false;
         }
-/*
-        File dataFileVoltaje = SD.open(directorio + "tel.txt" , FILE_WRITE);
-        dataFileVoltaje.println(telemetria);
-        dataFileVoltaje.close();
-*/
 }
   
 void nuevoDir() {
@@ -932,7 +938,7 @@ minimoPorCiento = getValor("min_bat");
 
 void getTelemetria(int bCampo, int bMas, int bMenos, int bVuelta){
   /*Muestro los datos para labview*/
-  float anguloAdaptado = 0;
+  double anguloAdaptado = 0;
 Serial.print("start");
 Serial.print(voltaje);
 Serial.print("amp");
@@ -945,6 +951,8 @@ Serial.print("rpm");
 Serial.print(revs);
 Serial.print("tempAmb");
 Serial.print(Temperatura);
+Serial.print("tempMotor");
+Serial.print(tempMotor);
 Serial.print("angX");
 if (anguloX <0){
   anguloAdaptado = 360 + anguloX; 
@@ -990,7 +998,7 @@ Serial.print("a6");
 Serial.print(alarma6);
 Serial.print("a7");
 Serial.print(alarma7);
-Serial.print("fin");
+Serial.println("fin");
 
 
     limpiar();
@@ -1189,24 +1197,24 @@ void comprobar (){
         alarma4 = 0;
      }
      if (watios > accionTrabajo && comprobarTrabajo != 0) {
-        analogWrite(A6, 1023);
+        analogWrite(A7, 1023);
         alarma5 = 1;
      } else {        
-        analogWrite(A6, 0);
+        analogWrite(A7, 0);
         alarma5 = 0;
      }
      if (comprobarPitch != 0 && (anguloX > accionAnguloX || anguloX < (accionAnguloX * -1))) {
-        //analogWrite(A6, 1023);
+        analogWrite(A8, 1023);
         alarma6 = 1;
      } else {        
-        //analogWrite(A6, 0);
+        analogWrite(A8, 0);
         alarma6 = 0;
      }
      if (comprobarRoll != 0 && (anguloY > accionAnguloY || anguloY < (accionAnguloY * -1))) {
-        //analogWrite(A6, 1023);
+        analogWrite(A9, 1023);
         alarma7 = 1;
      } else {        
-        //analogWrite(A6, 0);
+        analogWrite(A9, 0);
         alarma7 = 0;
      }
 }
@@ -2033,7 +2041,7 @@ void ReadSensor() {
    half_revolutions++;
  }
 */
- int getColor(float valor, float diferencia, float minimo, float maximo) {
+ int getColor(double valor, double diferencia, double minimo, double maximo) {
     int color = TFT_BLACK;
     if (valor <= minimo) {    
         color = TFT_RED;
@@ -2048,7 +2056,7 @@ void ReadSensor() {
     }
     return color;
   }
- int getColorInvertido(float valor, float diferencia, float minimo, float maximo) {
+ int getColorInvertido(double valor, double diferencia, double minimo, double maximo) {
     int color = TFT_BLACK;
     if (valor >= maximo) {    
         color = TFT_RED;
@@ -2063,8 +2071,37 @@ void ReadSensor() {
       }
     return color;
   }
+  
+#define BUFF_SIZE 64
+void drawIcon(const unsigned short* icon, int16_t x, int16_t y, int8_t width, int8_t height) {
+
+  uint16_t  pix_buffer[BUFF_SIZE];   // Pixel buffer (16 bits per pixel)
+
+  // Set up a window the right size to stream pixels into
+  tft.setWindow(x, y, x + width - 1, y + height - 1);
+
+  // Work out the number whole buffers to send
+  uint16_t nb = ((uint16_t)height * width) / BUFF_SIZE;
+
+  // Fill and send "nb" buffers to TFT
+  for (int i = 0; i < nb; i++) {
+    for (int j = 0; j < BUFF_SIZE; j++) {
+      pix_buffer[j] = pgm_read_word(&icon[i * BUFF_SIZE + j]);
+    }
+    tft.pushColors(pix_buffer, BUFF_SIZE);
+  }
+
+  // Work out number of pixels not yet sent
+  uint16_t np = ((uint16_t)height * width) % BUFF_SIZE;
+
+  // Send any partial buffer left over
+  if (np) {
+    for (int i = 0; i < np; i++) pix_buffer[i] = pgm_read_word(&icon[nb * BUFF_SIZE + i]);
+    tft.pushColors(pix_buffer, np);
+  }
+}
 
   
-int compBotonPulsado(int bMenos, float cantidad, int multiplicador){  
+int compBotonPulsado(int bMenos, double cantidad, int multiplicador){  
      return (bMenos == HIGH) ? (cantidad -= multiplicador) : (cantidad += multiplicador);
 }
