@@ -42,6 +42,7 @@ MPU6050 mpu;
 
 //declaramos el color cyan que no esta por defecto y el pin q usamos para los grados
 #define TFT_CYAN 0x7FF  
+#define TFT_DARK_GR 0xF00  
 
 #define INTERRUPT_PIN 11 
 
@@ -163,8 +164,13 @@ void dmpDataReady() {
 
 
 float anguloX = 0;//pitch
+float accionAnguloX = 70;
+float comprobarPitch= 0;
 float anguloY = 0;//roll
+float accionAnguloY = 70;
+float comprobarRoll= 0;
 float anguloZ = 0;//yaw
+
 
 float accelX = 0; // arriba abajo
 float accelY = 0; // izquierda derecha
@@ -179,6 +185,8 @@ int alarma2 = 0;
 int alarma3 = 0;
 int alarma4 = 0;
 int alarma5 = 0;
+int alarma6 = 0;
+int alarma7 = 0;
   
 String telemetria = "";
 boolean tel_ok = false;
@@ -350,7 +358,62 @@ void setup() {
 void loop() {
 
 
-  calculoPosicion();
+  /*=========================================================================
+                                INICIO DE CALCULO DE POSICION
+   =========================================================================*/
+
+
+
+    // reset interrupt flag and get INT_STATUS byte
+    mpuInterrupt = false;
+    mpuIntStatus = mpu.getIntStatus();
+
+    // get current FIFO count
+    fifoCount = mpu.getFIFOCount();
+
+    // check for overflow (this should never happen unless our code is too inefficient)
+    
+    if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
+        // reset so we can continue cleanly
+        mpu.resetFIFO();
+        //Serial.println(F("FIFO overflow!"));
+
+    // otherwise, check for DMP data ready interrupt (this should happen frequently)
+    } else if (mpuIntStatus & 0x02) {
+        // wait for correct available data length, should be a VERY short wait
+        while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
+
+        // read a packet from FIFO
+        mpu.getFIFOBytes(fifoBuffer, packetSize);
+        
+        // track FIFO count here in case there is > 1 packet available
+        // (this lets us immediately read more without waiting for an interrupt)
+        fifoCount -= packetSize;
+
+        mpu.dmpGetQuaternion(&q, fifoBuffer);
+        mpu.dmpGetGravity(&gravity, &q);
+        mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+        anguloZ = ypr[0] * 180/M_PI;
+        anguloX = ypr[1] * 180/M_PI;        
+        anguloY = ypr[2] * 180/M_PI;
+
+        
+        mpu.dmpGetAccel(&aa, fifoBuffer);
+        mpu.dmpGetGravity(&gravity, &q);
+        mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
+        accelX = aaReal.x;
+        accelX = accelX / 8192;
+        accelY = aaReal.y;
+        accelY = accelY / 8192;
+        accelZ = aaReal.z;
+        accelZ = accelZ / 8192;
+
+    }
+
+    
+  /*=========================================================================
+                                FIN DE CALCULO DE POSICION
+   =========================================================================*/
 
   // Se hace lectura del sensor, altura y temperatura ambiente
   ReadSensor();
@@ -522,74 +585,6 @@ minimoValor = ((puntoMedioValor * 200) / diferenciaValor)* -1;
     comprobar();
 }
 
-void calculoPosicion(){
-  
-  /*=========================================================================
-                                INICIO DE CALCULO DE POSICION
-   =========================================================================*/
-
-
-
-    // reset interrupt flag and get INT_STATUS byte
-    mpuInterrupt = false;
-    mpuIntStatus = mpu.getIntStatus();
-
-    // get current FIFO count
-    fifoCount = mpu.getFIFOCount();
-
-    // check for overflow (this should never happen unless our code is too inefficient)
-    
-    if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
-        // reset so we can continue cleanly
-        mpu.resetFIFO();
-        //Serial.println(F("FIFO overflow!"));
-
-    // otherwise, check for DMP data ready interrupt (this should happen frequently)
-    } else if (mpuIntStatus & 0x02) {
-        // wait for correct available data length, should be a VERY short wait
-        while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
-
-        // read a packet from FIFO
-        mpu.getFIFOBytes(fifoBuffer, packetSize);
-        
-        // track FIFO count here in case there is > 1 packet available
-        // (this lets us immediately read more without waiting for an interrupt)
-        fifoCount -= packetSize;
-
-        mpu.dmpGetQuaternion(&q, fifoBuffer);
-        mpu.dmpGetGravity(&gravity, &q);
-        mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-        anguloZ = ypr[0] * 180/M_PI;
-        if (anguloZ <0) {
-          anguloZ = 360 + anguloZ; 
-        }
-        anguloX = ypr[1] * 180/M_PI;
-        if (anguloX <0) {
-          anguloX = 360 + anguloX; 
-        }
-        anguloY = ypr[2] * 180/M_PI;
-        if (anguloY <0) {
-          anguloY = 360 + anguloY; 
-        }
-
-        
-        mpu.dmpGetAccel(&aa, fifoBuffer);
-        mpu.dmpGetGravity(&gravity, &q);
-        mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
-        accelX = aaReal.x;
-        accelX = accelX / 8192;
-        accelY = aaReal.y;
-        accelY = accelY / 8192;
-        accelZ = aaReal.z;
-        accelZ = accelZ / 8192;
-
-    }
-
-    
-  /*=========================================================================
-                                FIN DE CALCULO DE POSICION
-   =========================================================================*/
-}
 
 void rpm_fan(){ /* this code will be executed every time the interrupt 0 (pin2) gets low.*/
   
@@ -910,6 +905,22 @@ minimoPorCiento = getValor("min_bat");
  maxTrabajo = getValor("max_w");
   
  pulsosRpm = getValor("pulsos");
+
+
+ accionRpm = getValor("accion_r");
+ comprobarRpm = getValor("comprobar_r");
+ accionTrabajo = getValor("accion_w");
+ comprobarTrabajo = getValor("comprobar_w");
+ accionVoltaje = getValor("accion_v");
+ comprobarVoltaje = getValor("comprobar_v");
+ accionAmperios = getValor("accion_a");
+ comprobarAmperios = getValor("comprobar_a");
+ accionAnguloY = getValor("accion_roll");
+ comprobarRoll = getValor("comprobar_roll");
+ accionAnguloX = getValor("accion_p");
+ comprobarPitch = getValor("comprobar_p");
+ accionTempControl = getValor("accion_t");
+ comprobarTempControl = getValor("comprobar_t");
     
 
      tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -921,6 +932,7 @@ minimoPorCiento = getValor("min_bat");
 
 void getTelemetria(int bCampo, int bMas, int bMenos, int bVuelta){
   /*Muestro los datos para labview*/
+  float anguloAdaptado = 0;
 Serial.print("start");
 Serial.print(voltaje);
 Serial.print("amp");
@@ -934,11 +946,26 @@ Serial.print(revs);
 Serial.print("tempAmb");
 Serial.print(Temperatura);
 Serial.print("angX");
-Serial.print(anguloX);
+if (anguloX <0){
+  anguloAdaptado = 360 + anguloX; 
+} else {
+  anguloAdaptado = anguloX;
+}
+Serial.print(anguloAdaptado);
 Serial.print("angY");
-Serial.print(anguloY);
+if (anguloY <0){
+  anguloAdaptado = 360 + anguloY; 
+} else {
+  anguloAdaptado = anguloY;
+}
+Serial.print(anguloAdaptado);
 Serial.print("angZ");
-Serial.print(anguloZ);
+if (anguloZ <0){
+  anguloAdaptado = 360 + anguloZ; 
+} else {
+  anguloAdaptado = anguloZ;
+}
+Serial.print(anguloAdaptado);
 Serial.print("accX");
 Serial.print(accelX);
 Serial.print("accY");
@@ -959,6 +986,10 @@ Serial.print("a4");
 Serial.print(alarma4);
 Serial.print("a5");
 Serial.print(alarma5);
+Serial.print("a6");
+Serial.print(alarma6);
+Serial.print("a7");
+Serial.print(alarma7);
 Serial.print("fin");
 
 
@@ -1136,33 +1167,47 @@ void comprobar (){
         analogWrite(A3, 0);
         alarma1 = 0;
      }
-     if (revs < accionRpm && comprobarRpm != 0) {
+     if (revs > accionRpm && comprobarRpm != 0) {
         analogWrite(A4, 1023);
         alarma2 = 1;
      } else {        
         analogWrite(A4, 0);
         alarma2 = 0;
      }
-     if (amperaje < accionAmperios && comprobarAmperios != 0) {
+     if (amperaje > accionAmperios && comprobarAmperios != 0) {
         analogWrite(A5, 1023);
         alarma3 = 1;
      } else {        
         analogWrite(A5, 0);
         alarma3 = 0;
      }
-     if (tempControladora < accionTempControl && comprobarTempControl != 0) {
+     if (tempControladora > accionTempControl && comprobarTempControl != 0) {
         analogWrite(A6, 1023);
         alarma4 = 1;
      } else {        
         analogWrite(A6, 0);
         alarma4 = 0;
      }
-     if (watios < accionTrabajo && comprobarTrabajo != 0) {
+     if (watios > accionTrabajo && comprobarTrabajo != 0) {
         analogWrite(A6, 1023);
         alarma5 = 1;
      } else {        
         analogWrite(A6, 0);
         alarma5 = 0;
+     }
+     if (comprobarPitch != 0 && (anguloX > accionAnguloX || anguloX < (accionAnguloX * -1))) {
+        //analogWrite(A6, 1023);
+        alarma6 = 1;
+     } else {        
+        //analogWrite(A6, 0);
+        alarma6 = 0;
+     }
+     if (comprobarRoll != 0 && (anguloY > accionAnguloY || anguloY < (accionAnguloY * -1))) {
+        //analogWrite(A6, 1023);
+        alarma7 = 1;
+     } else {        
+        //analogWrite(A6, 0);
+        alarma7 = 0;
      }
 }
 
@@ -1177,63 +1222,102 @@ void accion(int bCampo, int bMenos, int bMas, int bVuelta) {
   tft.print("Suma x ");
   tft.println(multiplicador);
   
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
   tft.setCursor(20, 20);
   tft.print("RPM => ");
   tft.setCursor(150, 20);
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.print(accionRpm);
   tft.setCursor(250, 20);
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
   tft.print(" ====> ");
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.setCursor(350, 20);
   tft.print((comprobarRpm == 0)?"Off":"On ");
 
+  
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
   tft.setCursor(20, 60);
   tft.print("W => ");
   tft.setCursor(150, 60);
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.print(accionTrabajo);
   tft.setCursor(250, 60);
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
   tft.print(" ====> ");
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.setCursor(350, 60);
   tft.print((comprobarTrabajo == 0)?"Off":"On ");
 
+  
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
   tft.setCursor(20, 100);
   tft.print("Amps => ");
   tft.setCursor(150, 100);
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.print(accionAmperios);
   tft.setCursor(250, 100);
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
   tft.print(" ====> ");
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.setCursor(350, 100);
   tft.print((comprobarAmperios == 0)?"Off":"On ");
 
+  
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
   tft.setCursor(20, 140);
   tft.print("V => ");
   tft.setCursor(150, 140);
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.print(accionVoltaje);
   tft.setCursor(250, 140);
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
   tft.print(" ====> ");
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.setCursor(350, 140);
   tft.print((comprobarVoltaje == 0)?"Off":"On ");
 
+  
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
   tft.setCursor(20, 180);
   tft.print("Temp => ");
   tft.setCursor(150, 180);
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.print(accionTempControl);
   tft.setCursor(250, 180);
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
   tft.print(" ====> ");
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.setCursor(350, 180);
   tft.print((comprobarTempControl == 0)?"Off":"On ");
   
-  tft.fillRect(240, 0, 150,20, TFT_WHITE);
-  tft.drawRect(241, 1, 148,18, TFT_ORANGE);
-  tft.setCursor(250, 0);
-  tft.print("Suma x ");
-  tft.println(multiplicador);
   
   
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
   tft.setCursor(20, 220);
-  tft.print("T. Grafica (ms) => ");
+  tft.print("Pitch => ");
+  tft.setCursor(150, 220);
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
+  tft.print(accionAnguloX);
   tft.setCursor(250, 220);
-  tft.print(tiempoGrafica);
-  tft.print("   ms");
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
+  tft.print(" ====> ");
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
+  tft.setCursor(350, 220);
+  tft.print((comprobarPitch == 0)?"Off":"On ");
+  
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
+  tft.setCursor(20, 260);
+  tft.print("Roll => ");
+  tft.setCursor(150, 260);
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
+  tft.print(accionAnguloY);
+  tft.setCursor(250, 260);
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
+  tft.print(" ====> ");
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
+  tft.setCursor(350, 260);
+  tft.print((comprobarRoll == 0)?"Off":"On ");
   
 
   if (bVuelta == HIGH) {
@@ -1245,7 +1329,7 @@ void accion(int bCampo, int bMenos, int bMas, int bVuelta) {
    }
 
    if (bCampo == HIGH) {
-      if (cursorAccion == 10){
+      if (cursorAccion == 13){
         cursorAccion = 0;
       } else {
         cursorAccion++;
@@ -1285,11 +1369,17 @@ void accion(int bCampo, int bMenos, int bMas, int bVuelta) {
           tft.fillCircle(340, 185, 5,TFT_GREEN);
           break;
         case 10: 
-          tft.fillCircle(195, 225, 5,TFT_GREEN);
-          break;/*
+          tft.fillCircle(140, 225, 5,TFT_GREEN);
+          break;
         case 11: 
-          tft.fillCircle(215, 265, 5,TFT_GREEN);
-          break;*/
+          tft.fillCircle(340, 225, 5,TFT_GREEN);
+          break;
+        case 12: 
+          tft.fillCircle(140, 265, 5,TFT_GREEN);
+          break;
+        case 13: 
+          tft.fillCircle(340, 265, 5,TFT_GREEN);
+          break;
         default: break;
       }
 
@@ -1299,6 +1389,7 @@ void accion(int bCampo, int bMenos, int bMas, int bVuelta) {
           accionRpm = compBotonPulsado(bMenos, accionRpm, multiplicador); 
 //          // (bMenos == HIGH) ? (accionRpm -= multiplicador) : (accionRpm += multiplicador);
 //          tft.fillCircle(140, 25, 5 ,TFT_GREEN);
+          setValor("accion_r", accionRpm);
           break;
         case 1: 
           if(comprobarRpm == 1)  {
@@ -1306,9 +1397,11 @@ void accion(int bCampo, int bMenos, int bMas, int bVuelta) {
           } else {
             comprobarRpm = 1;
           }
+           setValor("comprobar_r", comprobarRpm);
           break;
         case 2:
           accionTrabajo = compBotonPulsado(bMenos, accionTrabajo, multiplicador); 
+          setValor("accion_w", accionTrabajo);
           break;
         case 3: 
           if(comprobarTrabajo == 1)  {
@@ -1316,9 +1409,11 @@ void accion(int bCampo, int bMenos, int bMas, int bVuelta) {
           } else {
             comprobarTrabajo = 1;
           }
+           setValor("comprobar_w", comprobarTrabajo);
           break;
         case 4: 
           accionAmperios = compBotonPulsado(bMenos, accionAmperios, multiplicador); 
+          setValor("accion_a", accionAmperios);
           break;
         case 5:
           if(comprobarAmperios == 1)  {
@@ -1326,9 +1421,11 @@ void accion(int bCampo, int bMenos, int bMas, int bVuelta) {
           } else {
             comprobarAmperios = 1;
           }
+           setValor("comprobar_a", comprobarAmperios);
           break;
         case 6: 
           accionVoltaje = compBotonPulsado(bMenos, accionVoltaje, multiplicador); 
+          setValor("accion_v", accionVoltaje);
           break;
         case 7: 
           if(comprobarVoltaje == 1)  {
@@ -1336,9 +1433,11 @@ void accion(int bCampo, int bMenos, int bMas, int bVuelta) {
           } else {
             comprobarVoltaje = 1;
           }
+           setValor("comprobar_v", comprobarVoltaje);
           break;
         case 8: 
-          accionTempControl = compBotonPulsado(bMenos, accionTempControl, multiplicador); 
+          accionTempControl = compBotonPulsado(bMenos, accionTempControl, multiplicador);
+          setValor("accion_t", accionTempControl); 
           break;
         case 9: 
           if(comprobarTempControl == 1)  {
@@ -1346,13 +1445,32 @@ void accion(int bCampo, int bMenos, int bMas, int bVuelta) {
           } else {
             comprobarTempControl = 1;
           }
+           setValor("comprobar_t", comprobarTempControl);
           break;
         case 10: 
-          tiempoGrafica = compBotonPulsado(bMenos, tiempoGrafica, multiplicador);
-          break;/*
+          accionAnguloX = compBotonPulsado(bMenos, accionAnguloX, multiplicador);
+          setValor("accion_p", accionAnguloX);
+          break;
         case 11: 
-          tamanoBateria = compBotonPulsado(bMenos, tamanoBateria, multiplicador);
-          break;*/
+          if(comprobarPitch == 1)  {
+            comprobarPitch = 0;
+          } else {
+            comprobarPitch = 1;
+          }
+           setValor("comprobar_p", comprobarPitch);
+          break;
+        case 12: 
+          accionAnguloY = compBotonPulsado(bMenos, accionAnguloY, multiplicador);
+          setValor("accion_roll", accionAnguloY);
+          break;
+        case 13: 
+          if(comprobarRoll == 1)  {
+            comprobarRoll = 0;
+          } else {
+            comprobarRoll = 1;
+          }
+           setValor("comprobar_roll", comprobarRoll);
+          break;
         default: break;
       }
     }
@@ -1451,7 +1569,7 @@ void pantallaGeneral() {
   tft.setCursor(10, 40);
   tft.setTextSize(3);
   tft.print(voltaje);
-  tft.print(" V  ");
+  tft.print(" V ");
   
   
   tft.setTextSize(2);
@@ -1486,7 +1604,7 @@ void pantallaGeneral() {
   tft.setCursor(240, 160);
   tft.setTextSize(3);
   tft.print(Temperatura, 1);//quito 5 para ajustarlo 
-  tft.println(" C\t  ");
+  tft.println(" C ");
   
   tft.setTextSize(2);
   tft.setCursor(240, 200);
@@ -1500,7 +1618,7 @@ void pantallaGeneral() {
     
   tft.setTextSize(2);
   tft.setCursor(240, 80);
-  tft.println("T. Controladora: ");
+  tft.println("T. Control: ");
   tft.setCursor(240, 100);
   tft.setTextSize(3);
   tft.print(tempControladora, 1);
@@ -1651,7 +1769,6 @@ void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
       }
     }
         
-  
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
   
   tft.fillRect(240, 0, 150,20, TFT_WHITE);
@@ -1661,9 +1778,11 @@ void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
   tft.println(multiplicador);
   
   
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
   tft.setCursor(40, 10);
   tft.println("Voltaje: Voltios");
 
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.setCursor(60, 30);
   tft.print("Min: ");
   tft.println(minVoltaje);
@@ -1673,9 +1792,11 @@ void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
   tft.println(maxVoltaje);
 
 
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
   tft.setCursor(40, 60);
   tft.println("Amperaje: Amperios");
 
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.setCursor(60, 80);
   tft.print("Min: ");
   tft.println(minAmperios);
@@ -1685,9 +1806,11 @@ void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
   tft.println(maxAmperios);
 
 
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
   tft.setCursor(40, 110);
   tft.println("T. Motor: Celsius");
 
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.setCursor(60, 130);
   tft.print("Min: ");
   tft.println(minTemp);
@@ -1697,9 +1820,11 @@ void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
   tft.println(maxTemp);
 
 
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
   tft.setCursor(40, 160);
   tft.println("RPM: revs/min");
   
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.setCursor(20, 180);
   tft.print("P: ");
   tft.print(pulsosRpm);
@@ -1713,11 +1838,13 @@ void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
   tft.print("Max: ");
   tft.println(maxRpm);
 
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
   tft.setCursor(13, 210);
-  tft.println("Salto y p. medio en mv:");
+  tft.println("Sensor de intensidad");
 
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.setCursor(15, 230);
-  tft.print("S: ");
+  tft.print("mv: ");
   tft.println(salto,0);
   
 
@@ -1725,17 +1852,21 @@ void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
   tft.print("Pmid:");
   tft.println(puntoMedio,0);
 
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
   tft.setCursor(290, 210);
   tft.println("Bateria:");
   
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.setCursor(295, 230);
   tft.print("Min%: ");
   tft.println(minimoPorCiento,0);
 
 
+  tft.setTextColor(TFT_DARK_GR, TFT_WHITE);
   tft.setCursor(40, 260);
   tft.println("Trabajo: W");
 
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.setCursor(60, 280);
   tft.print("Min: ");
   tft.println(minTrabajo);
