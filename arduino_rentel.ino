@@ -204,7 +204,7 @@ void setup() {
     int cx = 400- (i/10);
     int cy = 280- (i/10);
       tft.drawCircle(cx,cy,545-i, TFT_BLUE);
-      delay(5);
+      delay(1);
       if ((550 - i) == 99) {drawIcon(logo, 304, 183, logoWidth, logoHeight); }
    }  
    
@@ -1975,7 +1975,6 @@ void SensorStart() {
     tft.setTextColor(TFT_RED, TFT_BLACK);
     tft.println("PROBLEMA");
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    while (1);
   }
 
   //Se inicia la lectura de temperatura
