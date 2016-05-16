@@ -100,7 +100,7 @@ int comprobarTrabajo = 0;
 
 
 // Variables de configuracion
-int menu = 0;
+int menu = 1;
 int cursorConfig = 0;
 int multiplicador = 1;
 int cursorAccion = 0;
@@ -185,6 +185,16 @@ int alarma7 = 0;
   
 String telemetria = "";
 boolean tel_ok = false;
+int cambio_hora = 0;
+boolean salida = false;
+
+int hd = 0;
+int hu = 0;
+int md = 0;
+int mu = 0;
+int sd = 0;
+int su = 0;
+int cursor_hora = 0;
 
 void setup() {
 
@@ -539,24 +549,24 @@ minimoValor = ((puntoMedioValor * 200) / diferenciaValor)* -1;
       difTrabajo = (maxTrabajo - minTrabajo) / 5;
       menu = 1;
       tft.fillScreen(TFT_WHITE);
-  } else if (bMenu == HIGH) {
+  } else if (bMenu == HIGH && menu != 5) {
       menu = 1;
       tft.fillScreen(TFT_WHITE);
   }
-  if (bConf == HIGH && menu != 0 && menu != 3) {        
+  if (bConf == HIGH && menu != 0 && menu != 3 && menu != 5) {        
       menu = 0;
       tft.fillScreen(TFT_WHITE);
-  } else if (bConf == HIGH && menu != 3 && menu != 4) {      
+  } else if (bConf == HIGH && menu != 3 && menu != 4 && menu != 5) {      
       menu = 3;
       tft.fillScreen(TFT_WHITE);
-  } else if (bConf == HIGH) {
+  } else if (bConf == HIGH && menu != 5) {
       menu = 4;
       tft.fillScreen(TFT_WHITE);
   }
 
 
     //Calculamos donde estamos
-    if ((bCampo == HIGH || bMas == HIGH || bMenos == HIGH) && menu != 0 && menu != 3 && menu != 4) {
+    if ((bCampo == HIGH || bMas == HIGH || bMenos == HIGH) && menu != 0 && menu != 3 && menu != 4 && menu != 5) {
       if (menu == 2){
         menu = 1;
         delay(200);
@@ -576,6 +586,15 @@ minimoValor = ((puntoMedioValor * 200) / diferenciaValor)* -1;
   */
      pintarTelemetria();
      
+    if (bMenu == HIGH) {
+      cambio_hora++;
+    } else {
+      cambio_hora= 0;
+    }
+    if (cambio_hora >= 20){
+      menu = 5;
+      salida = false;
+    }
      if (menu == 0) {
         infoColores();
         configuracion(bCampo, bMenos, bMas, bVuelta);
@@ -591,11 +610,187 @@ minimoValor = ((puntoMedioValor * 200) / diferenciaValor)* -1;
         accion(bCampo, bMenos, bMas, bVuelta);
      } else if (menu == 4) {
         getTelemetria(bCampo, bMas, bMenos, bVuelta);
+        hora();
+        infoColores();
+     } else if (menu == 5) {
+        setHora(bCampo, bMas, bMenos, bVuelta, bConf, bMenu);
      } 
      
     comprobar();
 }
 
+void setHora(int bCampo, int bMas, int bMenos, int bVuelta, int bConf, int bMenu){
+  
+  limpiar();
+  
+  tft.setCursor(10,10);
+  tft.setTextSize(3);
+  tft.setTextColor(TFT_BLACK,TFT_WHITE);
+  tft.println("Cambio de hora:");
+  tft.setTextColor(TFT_BLUE,TFT_WHITE);
+  tft.println("--------------------------");
+  tft.setTextColor(TFT_GREEN,TFT_WHITE);
+  tft.print("+/-");
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_BLACK,TFT_WHITE);
+  tft.print(" para cambiar valores");
+  tft.setTextSize(3);
+  tft.setTextColor(TFT_BLUE,TFT_WHITE);
+  tft.println("");
+  tft.println("--------------------------");
+  tft.setTextColor(TFT_RED,TFT_WHITE);
+  tft.print("vuelta/campo");
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_BLACK,TFT_WHITE);
+  tft.print(" para cambiar numeros");
+  tft.setTextSize(3);
+  tft.setTextColor(TFT_BLUE,TFT_WHITE);
+  tft.println("");
+  tft.println("--------------------------");
+  tft.print("conf");
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_BLACK,TFT_WHITE);
+  tft.print(" para confirmar o salir");
+  tft.setTextSize(3);
+  tft.setTextColor(TFT_BLUE,TFT_WHITE);
+  tft.println("");
+  tft.println("--------------------------");
+  tft.setTextColor(TFT_BLACK,TFT_WHITE);
+  tft.setCursor(120,210);
+  tft.setTextSize(5);
+  tft.print(hd);
+  tft.print(hu);
+  tft.print(":");
+  tft.print(md);
+  tft.print(mu);
+  tft.print(":");
+  tft.print(sd);
+  tft.print(su);
+  if (bConf == HIGH) {
+    salida?salida = false: salida=true;
+  }
+  if (salida) {    
+    tft.setTextSize(2);
+    tft.setCursor(10,300);
+    tft.setTextColor(TFT_GREEN,TFT_WHITE);
+    tft.print(" + ");
+    tft.setTextColor(TFT_BLACK,TFT_WHITE);
+    tft.print("para guardar |");
+    tft.setTextColor(TFT_RED,TFT_WHITE);
+    tft.print(" - ");
+    tft.setTextColor(TFT_BLACK,TFT_WHITE);
+    tft.println("para salir");
+  } else {
+    tft.fillRect(10,300, 400, 20 , TFT_WHITE);
+  }
+  if (salida && bMenos == HIGH){
+    menu = 1;
+    tft.fillScreen(TFT_WHITE);
+  }
+  if (bCampo == HIGH) {
+    cursor_hora ==5?cursor_hora = 0: cursor_hora++;    
+    tft.fillRect(90, 255, 300,20,TFT_WHITE);
+  } else if (bVuelta == HIGH) {
+    cursor_hora ==0?cursor_hora = 5: cursor_hora--;
+    tft.fillRect(90, 255, 300,20,TFT_WHITE);
+  }
+  switch(cursor_hora) {
+    case 0: 
+      tft.fillTriangle(120,270,132,255,144,270,TFT_GREEN);
+      tft.fillTriangle(110,270,90,262,110,255,TFT_RED);
+      tft.fillTriangle(154,270,174,262,154,255,TFT_RED);
+      break;
+    case 1: 
+      tft.fillTriangle(150,270,162,255,174,270,TFT_GREEN);
+      tft.fillTriangle(140,270,120,262,140,255,TFT_RED);
+      tft.fillTriangle(184,270,204,262,184,255,TFT_RED);
+      break;
+    case 2: 
+      tft.fillTriangle(210,270,222,255,234,270,TFT_GREEN);
+      tft.fillTriangle(200,270,180,262,200,255,TFT_RED);
+      tft.fillTriangle(244,270,264,262,244,255,TFT_RED);
+      break;
+    case 3: 
+      tft.fillTriangle(240,270,252,255,264,270,TFT_GREEN);
+      tft.fillTriangle(230,270,210,262,230,255,TFT_RED);
+      tft.fillTriangle(274,270,294,262,274,255,TFT_RED);
+      break;
+    case 4: 
+      tft.fillTriangle(300,270,312,255,324,270,TFT_GREEN);
+      tft.fillTriangle(290,270,270,262,290,255,TFT_RED);
+      tft.fillTriangle(334,270,354,262,334,255,TFT_RED);
+      break;
+    case 5: 
+      tft.fillTriangle(330,270,342,255,354,270,TFT_GREEN);
+      tft.fillTriangle(320,270,300,262,320,255,TFT_RED);
+      tft.fillTriangle(364,270,384,262,354,255,TFT_RED);
+      break;
+    
+  }
+  if (bMas == HIGH || bMenos == HIGH) {
+    int suma = 0;
+    switch(cursor_hora) {
+      case 0: 
+        bMas == HIGH? suma = 1:suma=-1;
+        hd += suma;
+        if (hd > 2)  hd = 0; 
+        if (hd < 0)  hd = 2;
+        if (hu > 4 && hd == 2) hu = 4;  
+        break;
+      case 1: 
+        bMas == HIGH? suma = 1:suma=-1;
+        hu += suma;
+        if (hd == 2)  {
+          if (hu > 4) hu = 0;   
+          if (hu < 0) hu = 4;      
+        }else if (hu < 0){
+          hu = 9;
+        }
+        break;
+      case 2: 
+        bMas == HIGH? suma = 1:suma=-1;
+        md += suma;
+        if (md > 5)  md = 0; 
+        if (md < 0)  md = 5;
+        break;
+      case 3: 
+        bMas == HIGH? suma = 1:suma=-1;
+        mu += suma;
+        if (mu > 9)  mu = 0; 
+        if (mu < 0)  mu = 9;
+        break;
+      case 4: 
+        bMas == HIGH? suma = 1:suma=-1;
+        sd += suma;
+        if (sd > 5)  sd = 0; 
+        if (sd < 0)  sd = 5;
+        break;
+      case 5: 
+        bMas == HIGH? suma = 1:suma=-1;
+        su += suma;
+        if (su > 9)  su = 0; 
+        if (su < 0)  su = 9;
+        break;
+      
+    }
+    
+  }
+
+  
+  if (salida && bMas == HIGH) {
+    rtc.adjust(DateTime(2016,05,4,(hd*10)+hu,(md*10)+mu,(sd*10)+su));
+    tft.fillScreen(TFT_WHITE);
+    tft.setTextSize(5);
+    tft.setCursor(10,10);
+    tft.println("  REINICIA");
+    tft.println("  ARDUINO");
+    delay(3000);
+    menu = 1;
+    tft.fillScreen(TFT_WHITE);
+  }
+  
+ 
+}
 
 void rpm_fan(){ /* this code will be executed every time the interrupt 0 (pin2) gets low.*/
   
@@ -621,7 +816,7 @@ void limpiar(){
     tft.fillScreen(TFT_WHITE);
     refresco = 0;
   }
-  if (sec >= 200) {
+  if (sec >= 100) {
     tel_ok = true;
     sec=0;    
   }
@@ -640,7 +835,7 @@ void subMenu2 (double rpm, double watios) {
   /*
   int lala = watios + 500;
   tft.print(lala);*/
-  tft.print(watios);
+  tft.print(watios, 0);
   tft.println(" ");
   tft.setCursor(10,170);
   tft.println("Revs/min:");
@@ -661,7 +856,7 @@ void subMenu2 (double rpm, double watios) {
     last_trabajo= watios;
   } else {    
     pintar(250,150,100,maxTrabajo - minTrabajo, 0, TFT_BLACK);
-    if (watios != last_trabajo){
+    if (last_trabajo != 0){
       pintar(250,150,100,maxTrabajo - minTrabajo, last_trabajo, TFT_WHITE);
     }
     last_trabajo= 0;
@@ -673,9 +868,9 @@ void subMenu2 (double rpm, double watios) {
     }
     last_rpm= revs;
   }else {    
-    pintar(250,310,100,minRpm - maxRpm, 0, TFT_BLACK);
-    if (revs != last_rpm) {
-      pintar(250,310,100,minRpm - maxRpm, last_rpm, TFT_WHITE);
+    pintar(250,310,100,maxRpm - minRpm, 0, TFT_BLACK);
+    if (last_rpm != 0) {
+      pintar(250,310,100,maxRpm - minRpm, last_rpm, TFT_WHITE);
     }
     last_rpm= 0;
   }
@@ -807,7 +1002,7 @@ void pintarWarning (int cx, int cy, int longitud,  int color) {
     tft.drawLine(cx-2,cy-2,cx -x,cy-y,color);
     tft.drawLine(cx-3,cy-1,cx -x,cy-y,color);
     tft.drawLine(cx-4,cy,cx -x,cy-y,color);
-    tft.fillCircle(cx -x,cy-y, 3,color);
+    tft.fillCircle(cx -x,cy-y, 5,color);
     
     tft.drawLine(cx - longitud,cy,cx + longitud,cy,TFT_RED);
      tft.fillCircle(cx,cy, 10 , TFT_BLACK);
@@ -984,19 +1179,19 @@ Serial.print("altura");
 Serial.print(Altura);
 Serial.print("porcent");
 Serial.print(porciento);
-Serial.print("a1");
+Serial.print("al1");
 Serial.print(alarma1);
-Serial.print("a2");
+Serial.print("al2");
 Serial.print(alarma2);
-Serial.print("a3");
+Serial.print("al3");
 Serial.print(alarma3);
-Serial.print("a4");
+Serial.print("al4");
 Serial.print(alarma4);
-Serial.print("a5");
+Serial.print("al5");
 Serial.print(alarma5);
-Serial.print("a6");
+Serial.print("al6");
 Serial.print(alarma6);
-Serial.print("a7");
+Serial.print("al7");
 Serial.print(alarma7);
 Serial.println("fin");
 
@@ -1347,46 +1542,46 @@ void accion(int bCampo, int bMenos, int bMas, int bVuelta) {
 
    switch(cursorAccion) {
         case 0:
-          tft.fillCircle(140, 25, 5 ,TFT_GREEN);
+          tft.fillCircle(140, 25, 5 ,TFT_ORANGE);
           break;
         case 1: 
-          tft.fillCircle(340, 25, 5,TFT_GREEN);
+          tft.fillCircle(340, 25, 5,TFT_ORANGE);
           break;
         case 2:
-          tft.fillCircle(140, 65, 5,TFT_GREEN);
+          tft.fillCircle(140, 65, 5,TFT_ORANGE);
           break;
         case 3: 
-          tft.fillCircle(340, 65, 5,TFT_GREEN);
+          tft.fillCircle(340, 65, 5,TFT_ORANGE);
           break;
         case 4: 
-          tft.fillCircle(140, 105, 5,TFT_GREEN);
+          tft.fillCircle(140, 105, 5,TFT_ORANGE);
           break;
         case 5:
-          tft.fillCircle(340, 105, 5 ,TFT_GREEN);
+          tft.fillCircle(340, 105, 5 ,TFT_ORANGE);
           break;
         case 6: 
-          tft.fillCircle(140, 145, 5,TFT_GREEN);
+          tft.fillCircle(140, 145, 5,TFT_ORANGE);
           break;
         case 7: 
-          tft.fillCircle(340, 145, 5,TFT_GREEN);
+          tft.fillCircle(340, 145, 5,TFT_ORANGE);
           break;
         case 8: 
-          tft.fillCircle(140, 185, 5,TFT_GREEN);
+          tft.fillCircle(140, 185, 5,TFT_ORANGE);
           break;
         case 9: 
-          tft.fillCircle(340, 185, 5,TFT_GREEN);
+          tft.fillCircle(340, 185, 5,TFT_ORANGE);
           break;
         case 10: 
-          tft.fillCircle(140, 225, 5,TFT_GREEN);
+          tft.fillCircle(140, 225, 5,TFT_ORANGE);
           break;
         case 11: 
-          tft.fillCircle(340, 225, 5,TFT_GREEN);
+          tft.fillCircle(340, 225, 5,TFT_ORANGE);
           break;
         case 12: 
-          tft.fillCircle(140, 265, 5,TFT_GREEN);
+          tft.fillCircle(140, 265, 5,TFT_ORANGE);
           break;
         case 13: 
-          tft.fillCircle(340, 265, 5,TFT_GREEN);
+          tft.fillCircle(340, 265, 5,TFT_ORANGE);
           break;
         default: break;
       }
@@ -1517,7 +1712,7 @@ void infoColores() {
   tft.setTextColor(TFT_BLACK, getColorInvertido(tempControladora, difTemp, minTemp, maxTemp));
   tft.setCursor(430, 270);
   tft.setTextSize(2);
-  tft.print("C");
+  tft.print("C\t");
 }
 
 
@@ -1612,7 +1807,7 @@ void pantallaGeneral() {
   tft.setCursor(240, 160);
   tft.setTextSize(3);
   tft.print(Temperatura, 1);//quito 5 para ajustarlo 
-  tft.println(" C ");
+  tft.println(" C\t");
   
   tft.setTextSize(2);
   tft.setCursor(240, 200);
@@ -1630,7 +1825,7 @@ void pantallaGeneral() {
   tft.setCursor(240, 100);
   tft.setTextSize(3);
   tft.print(tempControladora, 1);
-  tft.println(" C\t  ");
+  tft.println(" C\t");
 
 }
 
@@ -1640,46 +1835,46 @@ void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
   limpiar();
       switch(cursorConfig) {
         case 0:
-          tft.fillCircle(50, 35, 5,TFT_GREEN);
+          tft.fillCircle(50, 35, 5,TFT_ORANGE);
           break;
         case 1: 
-          tft.fillCircle(240, 35, 5,TFT_GREEN);
+          tft.fillCircle(240, 35, 5,TFT_ORANGE);
           break;
         case 2: 
-          tft.fillCircle(50, 85, 5,TFT_GREEN);
+          tft.fillCircle(50, 85, 5,TFT_ORANGE);
           break;
         case 3: 
-          tft.fillCircle(240, 85, 5,TFT_GREEN);
+          tft.fillCircle(240, 85, 5,TFT_ORANGE);
           break;
         case 4: 
-          tft.fillCircle(50, 135, 5,TFT_GREEN);
+          tft.fillCircle(50, 135, 5,TFT_ORANGE);
           break;
         case 5:
-          tft.fillCircle(240, 135, 5,TFT_GREEN);
+          tft.fillCircle(240, 135, 5,TFT_ORANGE);
           break;
         case 6: 
-          tft.fillCircle(13, 185, 5,TFT_GREEN);
+          tft.fillCircle(13, 185, 5,TFT_ORANGE);
           break;
         case 7: 
-          tft.fillCircle(113, 185, 5,TFT_GREEN);
+          tft.fillCircle(113, 185, 5,TFT_ORANGE);
           break;
         case 8:
-          tft.fillCircle(243, 185, 5,TFT_GREEN);
+          tft.fillCircle(243, 185, 5,TFT_ORANGE);
           break;
         case 9: 
-          tft.fillCircle(5, 235, 5,TFT_GREEN);
+          tft.fillCircle(5, 235, 5,TFT_ORANGE);
           break;
         case 10: 
-          tft.fillCircle(105, 235, 5,TFT_GREEN);
+          tft.fillCircle(105, 235, 5,TFT_ORANGE);
           break;  
         case 11: 
-          tft.fillCircle(285, 235, 5,TFT_GREEN);
+          tft.fillCircle(285, 235, 5,TFT_ORANGE);
           break;  
         case 12: 
-          tft.fillCircle(50, 285, 5,TFT_GREEN);
+          tft.fillCircle(50, 285, 5,TFT_ORANGE);
           break;
         case 13: 
-          tft.fillCircle(240, 285, 5,TFT_GREEN);
+          tft.fillCircle(240, 285, 5,TFT_ORANGE);
           break;   
         default: break;
       }
@@ -1705,73 +1900,59 @@ void configuracion(int bCampo, int bMenos, int bMas, int bVuelta) {
         case 0: 
           minVoltaje = compBotonPulsado(bMenos, minVoltaje, multiplicador); 
           setValor("min_v", minVoltaje);
-          tft.fillCircle(50, 35, 5,TFT_GREEN);
           break;
         case 1: 
           maxVoltaje = compBotonPulsado(bMenos, maxVoltaje, multiplicador);           
           voltaje_inicial = maxVoltaje;
           setValor("max_v", maxVoltaje);
-          tft.fillCircle(240, 35, 5,TFT_GREEN);
           break;
         case 2: 
           minAmperios = compBotonPulsado(bMenos, minAmperios, multiplicador); 
           setValor("min_a", minAmperios);
-          tft.fillCircle(50, 85, 5,TFT_GREEN);
           break;
         case 3: 
           maxAmperios = compBotonPulsado(bMenos, maxAmperios, multiplicador); 
           setValor("max_a", maxAmperios);
-          tft.fillCircle(240, 85, 5,TFT_GREEN);
           break;
         case 4: 
           minTemp = compBotonPulsado(bMenos, minTemp, multiplicador); 
           setValor("min_t", minTemp);
-          tft.fillCircle(50, 135, 5,TFT_GREEN);
           break;
         case 5:
           maxTemp = compBotonPulsado(bMenos, maxTemp, multiplicador); 
           setValor("max_t", maxTemp);
-          tft.fillCircle(240, 135, 5,TFT_GREEN);
           break;
         case 6: 
           pulsosRpm = compBotonPulsado(bMenos, pulsosRpm, multiplicador); 
           setValor("pulsos", pulsosRpm);
-          tft.fillCircle(13, 185, 5,TFT_GREEN);
           break;
         case 7: 
           minRpm = compBotonPulsado(bMenos, minRpm, multiplicador); 
           setValor("min_r", minRpm);
-          tft.fillCircle(113, 185, 5,TFT_GREEN);
           break;
         case 8: 
           maxRpm = compBotonPulsado(bMenos, maxRpm, multiplicador); 
           setValor("max_r", maxRpm);
-          tft.fillCircle(243, 185, 5,TFT_GREEN);
           break;
         case 9: 
           salto = compBotonPulsado(bMenos, salto, multiplicador); //saltos:8&p_medio:1276&min_bat:50&
           setValor("saltos", salto);
-          tft.fillCircle(5, 235, 5,TFT_GREEN);
           break;
         case 10: 
           puntoMedio = compBotonPulsado(bMenos, puntoMedio, multiplicador); 
           setValor("p_medio", puntoMedio);
-          tft.fillCircle(105, 235, 5,TFT_GREEN);
           break;
         case 11: 
           minimoPorCiento = compBotonPulsado(bMenos, minimoPorCiento, multiplicador); 
           setValor("min_bat", minimoPorCiento);
-          tft.fillCircle(285, 235, 5,TFT_GREEN);
           break;
         case 12: 
           minTrabajo = compBotonPulsado(bMenos, minTrabajo, multiplicador); 
           setValor("min_w", minTrabajo);
-          tft.fillCircle(50, 285, 5,TFT_GREEN);
           break;
         case 13: 
           maxTrabajo = compBotonPulsado(bMenos, maxTrabajo, multiplicador); 
           setValor("max_w", maxTrabajo);
-          tft.fillCircle(240, 285, 5,TFT_GREEN);
           break;
         default: break;
       }
